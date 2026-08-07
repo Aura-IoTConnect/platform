@@ -4,14 +4,75 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-Three-service platform, no shared package between them yet:
+A generic, config-driven IoT/SCADA/AI-agent platform. Verticals (cold storage,
+mining, smart city, ...) are **not** separate codebases — they're seed data
+against one schema, so the same pipeline (telemetry → rules → alerts →
+agents) works across every industry.
 
-- `apps/api` — Node.js/Express + TypeScript. Owns device management REST endpoints and serves as the dashboard's backend. In-memory storage for now (`apps/api/src/routes/devices.ts`) — swap for Postgres as persistence is added.
-- `apps/web` — React + Vite + TypeScript dashboard (scaffolded via `create-vite react-ts`).
-- `apps/workers` — Python/FastAPI. Owns telemetry ingestion and device data processing, decoupled from the Node API so protocol/data workloads (MQTT, batch processing) don't block the request/response API.
+- `apps/api` — Node.js/Express + TypeScript. Owns the schema (Prisma,
+  `apps/api/prisma/schema.prisma`) and all REST reads/writes for verticals,
+  device types, devices, rules, alerts, and agent runs/feedback.
+- `apps/web` — React + Vite + TypeScript dashboard with three tabs: Devices,
+  Alerts, Agent Runs (`apps/web/src/{Devices,Alerts,AgentRuns}Tab.tsx`).
+- `apps/workers` — Python/FastAPI. Owns telemetry ingestion, the rule
+  (control-loop) engine, and AI agent execution — decoupled from the Node API
+  so protocol/data workloads (MQTT, LLM calls) don't block the request/
+  response API.
 - `infra/mosquitto.conf` — local MQTT broker config used by `docker-compose.yml`.
 
-`apps/api` and `apps/web` are npm workspaces under the root `package.json`; `apps/workers` is a standalone Python project (own venv/requirements.txt), not part of the npm workspace.
+### Data model (generic engine)
+
+`Vertical` → `DeviceType` (carries a JSON `metrics` taxonomy: key/label/unit/
+range) → `Device` → `TelemetryReading`. `Rule` (metric + operator + threshold
++ severity + actionType) is scoped to a `DeviceType`, so one rule set applies
+to every device of that type. A rule breach creates an `Alert` and, on
+CRITICAL severity, auto-triggers the `anomaly-explainer` AI agent. `AgentRun`
+records are optionally scored via `AgentFeedback` (thumbs up/down in the
+Agent Runs tab) — that's the feedback loop on agent quality over time.
+
+Seeded verticals (`apps/api/prisma/seed.ts`): agri-processing, weather,
+cold-storage, smart-home-office, warehousing, e-health, smart-metering,
+manufacturing, water-treatment, mining, security, transportation, smart-city,
+energy (solar). Adding a vertical means adding seed data (device types +
+metrics + rules), not new code.
+
+### Schema ownership — read before touching either service's DB code
+
+**Prisma (`apps/api/prisma/schema.prisma`) is the single schema owner.**
+Migrations only ever run from `apps/api` (`npm run db:migrate`).
+`apps/workers/app/db.py` mirrors the same Postgres tables with plain
+SQLAlchemy Core `Table` objects (snake_case, matching Prisma's `@@map`/`@map`
+directives, including the four native Postgres enum types) — it only reads
+and writes rows, it never creates or alters tables. If you change
+`schema.prisma`, update `db.py`'s mirrored `Table`/`ENUM` defs to match.
+
+### The two loops
+
+1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`): sense
+   (telemetry ingested) → analyze (rules for that device's type + metric) →
+   decide (threshold breached?) → act (create `Alert`, dispatch
+   `notify`/`webhook`/`actuator`) → next reading.
+2. **Agent feedback loop**: an `AgentRun`'s output can be scored via
+   `AgentFeedback` (`POST /api/agents/runs/:id/feedback`), so agent quality
+   is trackable over time instead of being a one-shot, unverified suggestion.
+
+### AI agents (`apps/workers/app/agents.py`)
+
+Real Anthropic API calls — **requires `ANTHROPIC_API_KEY`** in
+`apps/workers/.env`. Without it, agent endpoints return `503` and telemetry
+ingestion / the control loop keep working normally (agents are best-effort,
+never a hard dependency of ingestion).
+
+- `anomaly-explainer` — auto-triggered on CRITICAL alerts; explains likely
+  root cause from the breached rule + recent readings.
+- `alert-triage` — ranks currently open alerts by true operational urgency.
+- `automation-suggester` — given a device type's rules + recent alert
+  history, proposes new/adjusted rules.
+
+Trigger endpoints live on `apps/workers` (`POST /agents/{key}/run` variants,
+see `agents_routes.py`) since only workers calls Claude. Listing runs and
+submitting feedback lives on `apps/api` (`GET /api/agents/runs`,
+`POST /api/agents/runs/:id/feedback`) since that's a plain DB read/write.
 
 ## Commands
 
@@ -19,14 +80,18 @@ Three-service platform, no shared package between them yet:
 docker compose up -d              # Postgres + Mosquitto (MQTT) for local dev
 
 npm install                       # installs apps/api + apps/web
+cp apps/api/.env.example apps/api/.env
+npm run db:migrate --workspace=apps/api   # apply Prisma schema to Postgres
+npm run db:seed --workspace=apps/api      # seed verticals/device types/rules/agents
 npm run dev:api                   # apps/api on :4000
 npm run dev:web                   # apps/web on :5173
 npm run build                     # builds api then web
 npm run lint                      # lints api then web
 
 cd apps/workers
-python -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env              # set ANTHROPIC_API_KEY to enable agents
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -36,4 +101,9 @@ Per-workspace commands (run from repo root):
 npm run dev --workspace=apps/api
 npm test --workspace=apps/api     # vitest run
 npm run lint --workspace=apps/web # oxlint
+npm run db:studio --workspace=apps/api    # Prisma Studio DB browser
 ```
+
+`apps/api`'s `dev`/`start` scripts load `.env` via Node's `--env-file` flag
+(Node 20.6+) — no `dotenv` dependency needed there. `apps/workers` loads
+`.env` via `python-dotenv` in `app/main.py`.

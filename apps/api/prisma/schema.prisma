@@ -1,0 +1,205 @@
+// Schema is owned by apps/api (Prisma). apps/workers (Python) connects to the
+// same Postgres database via SQLAlchemy models that mirror these tables —
+// migrations only ever run from here. See CLAUDE.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A market/domain the platform serves (cold storage, mining, smart city, ...).
+/// Verticals carry no behavior themselves — they're a grouping for device types.
+model Vertical {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  name        String
+  description String
+  deviceTypes DeviceType[]
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  @@map("verticals")
+}
+
+/// A class of device within a vertical (e.g. "cold-storage-unit"). Defines the
+/// metric taxonomy (name/unit/range) that devices of this type report, so the
+/// same telemetry/rule/alert pipeline works generically across verticals.
+model DeviceType {
+  id          String   @id @default(cuid())
+  verticalId  String   @map("vertical_id")
+  vertical    Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  description String
+  /// Array of { key, label, unit, min?, max? } describing expected metrics.
+  metrics     Json
+  devices     Device[]
+  rules       Rule[]
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([verticalId, key])
+  @@map("device_types")
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+
+  @@map("device_status")
+}
+
+/// A physical or virtual asset in the field. Telemetry, alerts, and rule
+/// evaluation all key off deviceType, so onboarding a new device is just
+/// picking an existing DeviceType (or defining a new one).
+model Device {
+  id           String             @id @default(cuid())
+  deviceTypeId String             @map("device_type_id")
+  deviceType   DeviceType         @relation(fields: [deviceTypeId], references: [id])
+  name         String
+  location     String?
+  status       DeviceStatus       @default(ONLINE)
+  metadata     Json?
+  telemetry    TelemetryReading[]
+  alerts       Alert[]
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  @@map("devices")
+}
+
+/// A single metric reading. Written by apps/workers as telemetry is ingested
+/// (HTTP or MQTT), never by apps/api.
+model TelemetryReading {
+  id        String   @id @default(cuid())
+  deviceId  String   @map("device_id")
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  metric    String
+  value     Float
+  unit      String?
+  timestamp DateTime @default(now())
+
+  @@index([deviceId, metric, timestamp])
+  @@map("telemetry_readings")
+}
+
+enum RuleOperator {
+  GT
+  GTE
+  LT
+  LTE
+  EQ
+
+  @@map("rule_operator")
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+
+  @@map("alert_severity")
+}
+
+/// A closed-loop automation definition: apps/workers evaluates this against
+/// every incoming reading for devices of `deviceType`, and on breach creates
+/// an Alert and dispatches `actionType` (notify | webhook | actuator).
+model Rule {
+  id           String        @id @default(cuid())
+  deviceTypeId String        @map("device_type_id")
+  deviceType   DeviceType    @relation(fields: [deviceTypeId], references: [id], onDelete: Cascade)
+  name         String
+  metric       String
+  operator     RuleOperator
+  threshold    Float
+  severity     AlertSeverity @default(WARNING)
+  actionType   String        @map("action_type")
+  actionConfig Json?         @map("action_config")
+  enabled      Boolean       @default(true)
+  alerts       Alert[]
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  @@map("rules")
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+
+  @@map("alert_status")
+}
+
+model Alert {
+  id         String        @id @default(cuid())
+  deviceId   String        @map("device_id")
+  device     Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ruleId     String?       @map("rule_id")
+  rule       Rule?         @relation(fields: [ruleId], references: [id])
+  severity   AlertSeverity
+  message    String
+  status     AlertStatus   @default(OPEN)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  resolvedAt DateTime?     @map("resolved_at")
+  agentRuns  AgentRun[]
+
+  @@index([status, createdAt])
+  @@map("alerts")
+}
+
+/// An AI agent definition (anomaly-explainer, alert-triage, automation-suggester, ...).
+/// `systemPrompt` plus the run's input is what apps/workers sends to Claude.
+model Agent {
+  id           String     @id @default(cuid())
+  key          String     @unique
+  name         String
+  description  String
+  systemPrompt String     @map("system_prompt")
+  runs         AgentRun[]
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@map("agents")
+}
+
+enum AgentRunStatus {
+  PENDING
+  COMPLETED
+  FAILED
+
+  @@map("agent_run_status")
+}
+
+/// One invocation of an Agent. `input` is the context handed to the model
+/// (telemetry window, alert, device metadata); `output` is the model's
+/// structured response. AgentFeedback closes the loop on run quality.
+model AgentRun {
+  id          String         @id @default(cuid())
+  agentId     String         @map("agent_id")
+  agent       Agent          @relation(fields: [agentId], references: [id])
+  alertId     String?        @map("alert_id")
+  alert       Alert?         @relation(fields: [alertId], references: [id])
+  input       Json
+  output      Json?
+  status      AgentRunStatus @default(PENDING)
+  feedback    AgentFeedback?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  completedAt DateTime?      @map("completed_at")
+
+  @@index([agentId, createdAt])
+  @@map("agent_runs")
+}
+
+/// Human (or downstream-outcome) feedback on an AgentRun, e.g. -1/0/1, used
+/// to track whether an agent's suggestions are actually good over time.
+model AgentFeedback {
+  id         String   @id @default(cuid())
+  agentRunId String   @unique @map("agent_run_id")
+  agentRun   AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("agent_feedback")
+}
