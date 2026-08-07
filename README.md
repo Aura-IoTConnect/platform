@@ -1,5 +1,8 @@
 # Aura IoTConnect Platform
 
+<!-- branch-protection-test: harmless comment, safe to merge or discard -->
+
+
 A generic, AI-driven IoT/SCADA platform: device monitoring, telemetry,
 closed-loop automation, and Claude-powered agents across many verticals
 (agri-processing, weather, cold storage, smart home/office, warehousing,
