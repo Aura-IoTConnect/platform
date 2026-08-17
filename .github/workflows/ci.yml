@@ -47,6 +47,12 @@ jobs:
         working-directory: apps/api
         run: npx prisma migrate deploy
 
+      - name: Seed database
+        working-directory: apps/api
+        # Not `npm run db:seed` — that script hardcodes --env-file=.env, which
+        # doesn't exist in CI. Env vars are already injected via job `env:`.
+        run: npx tsx prisma/seed.ts
+
       - name: Build
         run: npm run build
 
