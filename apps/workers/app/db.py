@@ -161,3 +161,14 @@ def get_engine() -> AsyncEngine:
         )
         _engine = create_async_engine(_asyncpg_url(database_url), pool_pre_ping=True)
     return _engine
+
+
+async def dispose_engine() -> None:
+    """asyncpg connections are bound to the event loop they were created on.
+    pytest-asyncio gives each test function a fresh loop by default, so tests
+    must dispose the (module-singleton) engine between tests — otherwise the
+    second test to touch it reuses pooled connections from a dead loop."""
+    global _engine
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None

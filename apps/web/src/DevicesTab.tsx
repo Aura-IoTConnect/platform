@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend } from './api'
+import { DeviceDetail } from './DeviceDetail'
 import type { Device, Vertical } from './types'
 
 export function DevicesTab() {
@@ -10,6 +11,7 @@ export function DevicesTab() {
   const [location, setLocation] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -47,6 +49,8 @@ export function DevicesTab() {
     }
   }
 
+  const selectedDevice = devices.find((d) => d.id === selectedId) ?? null
+
   return (
     <section>
       <form onSubmit={handleSubmit} className="device-form">
@@ -78,6 +82,8 @@ export function DevicesTab() {
 
       {error && <p className="error">{error}</p>}
 
+      {selectedDevice && <DeviceDetail device={selectedDevice} onClose={() => setSelectedId(null)} />}
+
       {loading ? (
         <p>Loading…</p>
       ) : devices.length === 0 ? (
@@ -85,7 +91,7 @@ export function DevicesTab() {
       ) : (
         <ul className="record-list">
           {devices.map((device) => (
-            <li key={device.id}>
+            <li key={device.id} className="clickable" onClick={() => setSelectedId(device.id)}>
               <div className="record-main">
                 <span className="record-title">{device.name}</span>
                 <span className="record-subtitle">

@@ -11,6 +11,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  ADMIN
+  OPERATOR
+
+  @@map("user_role")
+}
+
+/// A dashboard/API user. Only source of auth for apps/api routes — devices
+/// authenticate to apps/workers separately (see WORKERS_API_TOKEN in
+/// apps/workers, not a User row).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(OPERATOR)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
 /// A market/domain the platform serves (cold storage, mining, smart city, ...).
 /// Verticals carry no behavior themselves — they're a grouping for device types.
 model Vertical {
