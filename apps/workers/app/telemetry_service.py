@@ -5,12 +5,17 @@ has one implementation."""
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import select
+
 from app.agents import maybe_trigger_anomaly_explainer
-from app.db import get_engine, new_id, telemetry_readings
+from app.db import devices, get_engine, new_id, telemetry_readings
 from app.rule_engine import evaluate
+
+logger = logging.getLogger("telemetry_service")
 
 
 async def ingest_reading(
@@ -24,6 +29,16 @@ async def ingest_reading(
 
     engine = get_engine()
     async with engine.begin() as conn:
+        # device_id is a foreign key on telemetry_readings — check existence
+        # first so a bad/unknown id fails cleanly instead of a raw FK
+        # constraint violation (500) from the insert below.
+        known = (
+            await conn.execute(select(devices.c.id).where(devices.c.id == device_id))
+        ).first()
+        if known is None:
+            logger.warning("telemetry for unknown device_id=%s — dropped", device_id)
+            return {"status": "unknown_device", "alertsCreated": 0}
+
         await conn.execute(
             telemetry_readings.insert().values(
                 id=new_id(),

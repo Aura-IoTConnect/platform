@@ -44,12 +44,19 @@ export class WorkersRequestError extends Error {
   }
 }
 
+const WORKERS_TOKEN = import.meta.env.VITE_WORKERS_TOKEN
+
 // apps/workers (agent trigger endpoints) is a separate service from apps/api
-// and isn't behind the dashboard's JWT auth — see CLAUDE.md.
+// and isn't behind the dashboard's JWT auth — see CLAUDE.md. If configured,
+// it checks a shared bearer token instead (also just a basic abuse gate,
+// since VITE_WORKERS_TOKEN ships in the browser bundle — see CLAUDE.md).
 export async function workersPost<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${WORKERS_URL}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(WORKERS_TOKEN ? { authorization: `Bearer ${WORKERS_TOKEN}` } : {}),
+    },
     body: JSON.stringify(body),
   })
   if (!res.ok) {

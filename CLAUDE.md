@@ -59,10 +59,18 @@ update `db.py`'s mirrored `Table`/`ENUM` defs to match.
 the token in `localStorage` and logs out automatically on any `401`
 (`src/api.ts`'s `auth:unauthorized` event).
 
-`apps/workers` is **not** behind this auth — its agent-trigger endpoints are
-called directly from the dashboard's browser JS (CORS-open), and its
-ingestion endpoints are meant for devices/simulators, not dashboard users.
-Don't assume a request reaching `apps/workers` was authenticated.
+`apps/workers` is **not** behind this auth — its HTTP endpoints (telemetry
+ingestion, agent triggers) are called directly from the dashboard's browser
+JS (CORS-open) and from devices/simulators, none of which have user
+accounts. Instead it has its own, weaker mechanism: if `WORKERS_API_TOKEN`
+is set (`app/security.py`), every `/ingestion/*` and `/agents/*` route
+requires that exact bearer token; if unset, those routes are open (dev
+default). **This is a basic abuse gate, not real secrecy** — the dashboard's
+matching `VITE_WORKERS_TOKEN` ships inside the built browser bundle, so
+anyone with devtools on the page can read it. It stops opportunistic
+scanners hitting an open port; it does not stop a motivated user of the
+dashboard itself. Don't assume a request reaching `apps/workers` was
+authenticated in any strong sense.
 
 ### The two loops
 

@@ -1,12 +1,13 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.security import require_workers_token
 from app.telemetry_service import ingest_reading
 
-router = APIRouter(prefix="/ingestion", tags=["ingestion"])
+router = APIRouter(prefix="/ingestion", tags=["ingestion"], dependencies=[Depends(require_workers_token)])
 
 
 class TelemetryReading(BaseModel):
