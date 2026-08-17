@@ -59,18 +59,25 @@ update `db.py`'s mirrored `Table`/`ENUM` defs to match.
 the token in `localStorage` and logs out automatically on any `401`
 (`src/api.ts`'s `auth:unauthorized` event).
 
-`apps/workers` is **not** behind this auth — its HTTP endpoints (telemetry
-ingestion, agent triggers) are called directly from the dashboard's browser
-JS (CORS-open) and from devices/simulators, none of which have user
-accounts. Instead it has its own, weaker mechanism: if `WORKERS_API_TOKEN`
-is set (`app/security.py`), every `/ingestion/*` and `/agents/*` route
-requires that exact bearer token; if unset, those routes are open (dev
-default). **This is a basic abuse gate, not real secrecy** — the dashboard's
-matching `VITE_WORKERS_TOKEN` ships inside the built browser bundle, so
-anyone with devtools on the page can read it. It stops opportunistic
-scanners hitting an open port; it does not stop a motivated user of the
-dashboard itself. Don't assume a request reaching `apps/workers` was
-authenticated in any strong sense.
+`apps/workers` is **not** behind this auth directly — its HTTP endpoints
+(`/ingestion/*`, `/agents/*`) don't know about user accounts. Two different
+callers reach them by two different paths:
+
+- **The dashboard** never calls `apps/workers` directly. Agent triggers go
+  through `apps/api`'s `POST /api/agents/{key}/run` (`src/routes/agents.ts`),
+  which sits behind the normal JWT `requireAuth` middleware and then forwards
+  server-side to `apps/workers` via `src/workersClient.ts`, attaching
+  `WORKERS_API_TOKEN` from `apps/api`'s own env. That token never reaches the
+  browser.
+- **Devices/simulators** (no user accounts) call `POST /ingestion/telemetry`
+  on `apps/workers` directly, over MQTT or HTTP. If `WORKERS_API_TOKEN` is
+  set (`app/security.py`), the HTTP path requires that exact bearer token; if
+  unset, ingestion is open (dev default, same convention as
+  `ANTHROPIC_API_KEY`). This is a single shared secret, not per-device keys —
+  fine for local dev, a real deployment would want per-device credentials.
+
+Don't assume a request reaching `apps/workers` was authenticated as a
+specific user — at most it proves possession of the one shared token.
 
 ### The two loops
 
@@ -117,10 +124,12 @@ never a hard dependency of ingestion).
   view (Devices tab); given a device type's rules + recent alert history,
   proposes new/adjusted rules.
 
-Trigger endpoints live on `apps/workers` (`POST /agents/{key}/run` variants,
-see `agents_routes.py`) since only workers calls Claude. Listing runs and
-submitting feedback lives on `apps/api` (`GET /api/agents/runs`,
-`POST /api/agents/runs/:id/feedback`) since that's a plain DB read/write.
+The actual Claude calls live on `apps/workers` (`POST /agents/{key}/run`
+variants, see `agents_routes.py`), but the dashboard triggers them through
+`apps/api`'s `POST /api/agents/{key}/run`, which proxies server-side — see
+Auth above. Listing runs and submitting feedback also lives on `apps/api`
+(`GET /api/agents/runs`, `POST /api/agents/runs/:id/feedback`) since that's a
+plain DB read/write, no Claude access needed.
 
 ## Commands
 

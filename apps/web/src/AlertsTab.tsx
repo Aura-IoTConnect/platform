@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend, WorkersRequestError, workersPost } from './api'
+import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import type { Alert } from './types'
 
 function agentErrorMessage(err: unknown): string {
-  if (err instanceof WorkersRequestError && err.status === 503) {
+  if (err instanceof ApiRequestError && err.status === 503) {
     return 'AI agents are not configured (ANTHROPIC_API_KEY missing in apps/workers/.env).'
   }
   return 'Agent request failed — is apps/workers running?'
@@ -39,7 +39,7 @@ export function AlertsTab() {
     setAgentNotice(null)
     setPendingAgentId(alertId)
     try {
-      await workersPost('/agents/anomaly-explainer/run', { alert_id: alertId })
+      await apiSendAgent('/api/agents/anomaly-explainer/run', { alertId })
       setAgentNotice('Explanation generated — see it in the Agent Runs tab.')
     } catch (err) {
       setAgentNotice(agentErrorMessage(err))
@@ -52,7 +52,7 @@ export function AlertsTab() {
     setAgentNotice(null)
     setPendingAgentId('triage')
     try {
-      await workersPost('/agents/alert-triage/run', {})
+      await apiSendAgent('/api/agents/alert-triage/run', {})
       setAgentNotice('Triage complete — see the ranking in the Agent Runs tab.')
     } catch (err) {
       setAgentNotice(agentErrorMessage(err))

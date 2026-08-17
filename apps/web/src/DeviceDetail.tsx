@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiGet, WorkersRequestError, workersPost } from './api'
+import { apiGet, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import type { Device } from './types'
 
@@ -12,7 +12,7 @@ interface Reading {
 }
 
 function agentErrorMessage(err: unknown): string {
-  if (err instanceof WorkersRequestError && err.status === 503) {
+  if (err instanceof ApiRequestError && err.status === 503) {
     return 'AI agents are not configured (ANTHROPIC_API_KEY missing in apps/workers/.env).'
   }
   return 'Agent request failed — is apps/workers running?'
@@ -42,7 +42,7 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
     setAgentNotice(null)
     setSuggesting(true)
     try {
-      await workersPost('/agents/automation-suggester/run', { device_type_id: device.deviceType.id })
+      await apiSendAgent('/api/agents/automation-suggester/run', { deviceTypeId: device.deviceType.id })
       setAgentNotice('Suggestions generated — see them in the Agent Runs tab.')
     } catch (err) {
       setAgentNotice(agentErrorMessage(err))
