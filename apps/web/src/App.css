@@ -138,6 +138,41 @@
   margin-bottom: 1rem;
 }
 
+.api-key-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  border: 1px solid #e0a63e55;
+  border-radius: 8px;
+  background: #e0a63e11;
+}
+
+.api-key-banner p {
+  margin: 0;
+  flex-basis: 100%;
+}
+
+.api-key-banner code {
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.api-key-banner button {
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
 .record-list {
   list-style: none;
   padding: 0;

@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Header
 from pydantic import BaseModel
 
-from app.security import require_workers_token
+from app.security import check_device_auth
 from app.telemetry_service import ingest_reading
 
-router = APIRouter(prefix="/ingestion", tags=["ingestion"], dependencies=[Depends(require_workers_token)])
+router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 
 class TelemetryReading(BaseModel):
@@ -19,7 +19,11 @@ class TelemetryReading(BaseModel):
 
 
 @router.post("/telemetry")
-async def ingest_telemetry(reading: TelemetryReading) -> dict:
+async def ingest_telemetry(reading: TelemetryReading, authorization: Optional[str] = Header(default=None)) -> dict:
+    # Auth is per-device (Device.apiKeyHash), not a single shared token, so
+    # it needs reading.device_id — done here rather than as a router-level
+    # dependency, which can't see the parsed body.
+    await check_device_auth(reading.device_id, authorization)
     return await ingest_reading(
         reading.device_id, reading.metric, reading.value, unit=reading.unit, timestamp=reading.timestamp
     )

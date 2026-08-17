@@ -70,14 +70,24 @@ callers reach them by two different paths:
   `WORKERS_API_TOKEN` from `apps/api`'s own env. That token never reaches the
   browser.
 - **Devices/simulators** (no user accounts) call `POST /ingestion/telemetry`
-  on `apps/workers` directly, over MQTT or HTTP. If `WORKERS_API_TOKEN` is
-  set (`app/security.py`), the HTTP path requires that exact bearer token; if
-  unset, ingestion is open (dev default, same convention as
-  `ANTHROPIC_API_KEY`). This is a single shared secret, not per-device keys —
-  fine for local dev, a real deployment would want per-device credentials.
+  on `apps/workers` directly, over MQTT or HTTP. The HTTP path is per-device:
+  `apps/api` generates a random key when a device is created
+  (`POST /api/devices`, `src/apiKeys.ts`) and returns it exactly once in the
+  response (`apiKey` field) — only its SHA-256 hash is stored
+  (`Device.apiKeyHash`). `POST /api/devices/:id/rotate-key` issues a new one.
+  `apps/workers/app/security.py`'s `check_device_auth` re-derives that same
+  hash from the request's bearer token and compares it against the specific
+  `device_id` in the payload. A device with no key configured (e.g. seeded
+  demo devices, which never got one) falls back to the single shared
+  `WORKERS_API_TOKEN` instead; if that's also unset, ingestion for that
+  device is open (dev default, same convention as `ANTHROPIC_API_KEY`).
+  MQTT ingestion has no auth at all yet — that would need Mosquitto-level
+  credentials (a password file / ACLs), a separate mechanism from these HTTP
+  bearer tokens, not yet implemented.
 
 Don't assume a request reaching `apps/workers` was authenticated as a
-specific user — at most it proves possession of the one shared token.
+specific user — at most it proves possession of a device's key or the one
+shared token.
 
 ### The two loops
 

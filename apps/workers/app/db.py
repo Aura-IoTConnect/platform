@@ -54,6 +54,7 @@ devices = Table(
     Column("location", String),
     Column("status", device_status_enum),
     Column("metadata", JSONB),
+    Column("api_key_hash", String),
     Column("created_at", DateTime(timezone=True)),
 )
 

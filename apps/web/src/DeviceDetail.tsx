@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiGet, apiSendAgent, ApiRequestError } from './api'
+import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import type { Device } from './types'
 
@@ -23,6 +23,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   const [loading, setLoading] = useState(true)
   const [suggesting, setSuggesting] = useState(false)
   const [agentNotice, setAgentNotice] = useState<string | null>(null)
+  const [rotating, setRotating] = useState(false)
+  const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
   useEffect(() => {
     setLoading(true)
@@ -37,6 +39,18 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
     byMetric.get(r.metric)!.push(r)
   }
   for (const list of byMetric.values()) list.reverse() // API returns newest-first; charts read left-to-right in time
+
+  const rotateKey = async () => {
+    setRotating(true)
+    try {
+      const res = await apiSend<{ apiKey: string }>(`/api/devices/${device.id}/rotate-key`, 'POST', {})
+      setNewApiKey(res.apiKey)
+    } catch {
+      setAgentNotice('Failed to rotate API key.')
+    } finally {
+      setRotating(false)
+    }
+  }
 
   const suggestAutomation = async () => {
     setAgentNotice(null)
@@ -56,6 +70,9 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       <div className="device-detail-header">
         <h3>{device.name}</h3>
         <div className="record-actions">
+          <button type="button" onClick={rotateKey} disabled={rotating}>
+            {rotating ? 'Rotating…' : 'Rotate API key'}
+          </button>
           <button type="button" onClick={suggestAutomation} disabled={suggesting}>
             {suggesting ? 'Thinking…' : 'Suggest automation'}
           </button>
@@ -66,6 +83,16 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       </div>
 
       {agentNotice && <p className="hint">{agentNotice}</p>}
+
+      {newApiKey && (
+        <div className="api-key-banner">
+          <p>New API key — save it now, it won't be shown again (the old key stops working immediately):</p>
+          <code>{newApiKey}</code>
+          <button type="button" onClick={() => setNewApiKey(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p>Loading…</p>

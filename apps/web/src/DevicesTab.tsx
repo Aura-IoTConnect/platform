@@ -12,6 +12,7 @@ export function DevicesTab() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [newApiKey, setNewApiKey] = useState<{ deviceName: string; apiKey: string } | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -36,11 +37,12 @@ export function DevicesTab() {
 
     setError(null)
     try {
-      await apiSend('/api/devices', 'POST', {
+      const created = await apiSend<{ name: string; apiKey: string }>('/api/devices', 'POST', {
         name,
         deviceTypeId,
         location: location || undefined,
       })
+      setNewApiKey({ deviceName: created.name, apiKey: created.apiKey })
       setName('')
       setLocation('')
       load()
@@ -81,6 +83,18 @@ export function DevicesTab() {
       </form>
 
       {error && <p className="error">{error}</p>}
+
+      {newApiKey && (
+        <div className="api-key-banner">
+          <p>
+            API key for <strong>{newApiKey.deviceName}</strong> — save it now, it won't be shown again:
+          </p>
+          <code>{newApiKey.apiKey}</code>
+          <button type="button" onClick={() => setNewApiKey(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {selectedDevice && <DeviceDetail device={selectedDevice} onClose={() => setSelectedId(null)} />}
 

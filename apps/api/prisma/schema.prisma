@@ -83,6 +83,11 @@ model Device {
   location     String?
   status       DeviceStatus       @default(ONLINE)
   metadata     Json?
+  /// SHA-256 hex digest of the device's ingestion API key. The raw key is
+  /// generated and returned once (create + rotate endpoints), never stored.
+  /// Null means this device has no per-device key — see CLAUDE.md for the
+  /// ingestion auth fallback that applies in that case.
+  apiKeyHash   String?            @unique @map("api_key_hash")
   telemetry    TelemetryReading[]
   alerts       Alert[]
   createdAt    DateTime           @default(now()) @map("created_at")

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
+import { generateApiKey, hashApiKey } from "../apiKeys.js";
 import { prisma } from "../db.js";
 
 const createDeviceSchema = z.object({
@@ -12,12 +13,18 @@ const createDeviceSchema = z.object({
 
 export const devicesRouter = Router();
 
+// apiKeyHash is a secret's fingerprint — never send it back, even to admins.
+function omitApiKeyHash<T extends { apiKeyHash: string | null }>(device: T): Omit<T, "apiKeyHash"> {
+  const { apiKeyHash: _apiKeyHash, ...rest } = device;
+  return rest;
+}
+
 devicesRouter.get("/", async (_req, res) => {
   const devices = await prisma.device.findMany({
     include: { deviceType: { include: { vertical: true } } },
     orderBy: { createdAt: "desc" },
   });
-  res.json(devices);
+  res.json(devices.map(omitApiKeyHash));
 });
 
 devicesRouter.get("/:id", async (req, res) => {
@@ -29,7 +36,7 @@ devicesRouter.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Device not found" });
     return;
   }
-  res.json(device);
+  res.json(omitApiKeyHash(device));
 });
 
 devicesRouter.post("/", async (req, res) => {
@@ -47,9 +54,25 @@ devicesRouter.post("/", async (req, res) => {
     return;
   }
 
+  const apiKey = generateApiKey();
   const device = await prisma.device.create({
-    data: parsed.data as Prisma.DeviceUncheckedCreateInput,
+    data: { ...parsed.data, apiKeyHash: hashApiKey(apiKey) } as Prisma.DeviceUncheckedCreateInput,
     include: { deviceType: { include: { vertical: true } } },
   });
-  res.status(201).json(device);
+  // apiKey is shown exactly once — the device must store it now, since only
+  // its hash is kept from here on.
+  res.status(201).json({ ...omitApiKeyHash(device), apiKey });
+});
+
+devicesRouter.post("/:id/rotate-key", async (req, res) => {
+  const apiKey = generateApiKey();
+  try {
+    const device = await prisma.device.update({
+      where: { id: req.params.id },
+      data: { apiKeyHash: hashApiKey(apiKey) },
+    });
+    res.json({ ...omitApiKeyHash(device), apiKey });
+  } catch {
+    res.status(404).json({ error: "Device not found" });
+  }
 });
