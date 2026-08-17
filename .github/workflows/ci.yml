@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iotplatform
+          POSTGRES_PASSWORD: iotplatform
+          POSTGRES_DB: iotplatform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U iotplatform"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://iotplatform:iotplatform@localhost:5432/iotplatform
+      JWT_SECRET: ci-test-secret-do-not-use-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Apply Prisma migrations
+        working-directory: apps/api
+        run: npx prisma migrate deploy
+
+      - name: Build
+        run: npm run build
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Node tests (apps/api)
+        run: npm test --workspace=apps/api
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: apps/workers/requirements-dev.txt
+
+      - name: Install Python dependencies
+        working-directory: apps/workers
+        run: pip install -r requirements-dev.txt
+
+      - name: Python tests (apps/workers)
+        working-directory: apps/workers
+        run: pytest -v
