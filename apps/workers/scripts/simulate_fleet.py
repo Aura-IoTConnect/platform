@@ -57,6 +57,10 @@ async def run(interval: float) -> None:
     port = int(os.environ.get("MQTT_PORT", "1883"))
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    username = os.environ.get("MQTT_USERNAME")
+    password = os.environ.get("MQTT_PASSWORD")
+    if username:
+        client.username_pw_set(username, password)
     client.connect(host, port, keepalive=30)
     client.loop_start()
 

@@ -81,9 +81,14 @@ callers reach them by two different paths:
   demo devices, which never got one) falls back to the single shared
   `WORKERS_API_TOKEN` instead; if that's also unset, ingestion for that
   device is open (dev default, same convention as `ANTHROPIC_API_KEY`).
-  MQTT ingestion has no auth at all yet — that would need Mosquitto-level
-  credentials (a password file / ACLs), a separate mechanism from these HTTP
-  bearer tokens, not yet implemented.
+  MQTT ingestion is gated separately, at the broker: Mosquitto requires a
+  username/password (`infra/mosquitto.passwd` + `mosquitto.acl`, mounted by
+  `docker-compose.yml`) restricted to the `telemetry/#` topic namespace —
+  one shared credential for every publisher, not per-device like the HTTP
+  path's `Device.apiKeyHash`. Set via `MQTT_USERNAME`/`MQTT_PASSWORD` in
+  `apps/workers/.env` (the subscriber) and the same in whatever publishes
+  (e.g. `scripts/simulate_fleet.py`). Real per-device MQTT auth would need
+  Mosquitto's dynamic-security plugin or per-client certs — not implemented.
 
 Don't assume a request reaching `apps/workers` was authenticated as a
 specific user — at most it proves possession of a device's key or the one

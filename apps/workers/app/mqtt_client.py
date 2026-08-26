@@ -4,6 +4,11 @@ into the same ingest_reading() pipeline used by POST /ingestion/telemetry.
 Topic convention: `telemetry/<device_id>/<metric>`, JSON payload
 `{"value": <float>, "unit": <str, optional>}`.
 
+The broker requires a username/password (infra/mosquitto.passwd +
+mosquitto.acl, restricted to the telemetry/# topic namespace) — a single
+shared credential for all publishers, not per-device like the HTTP ingestion
+path's Device.apiKeyHash. See CLAUDE.md.
+
 paho-mqtt's callbacks run on a background network thread, not the asyncio
 event loop FastAPI/SQLAlchemy need — every message is handed off to the main
 loop via `asyncio.run_coroutine_threadsafe`.
@@ -40,6 +45,11 @@ class MqttBridge:
         client.on_connect = self._on_connect
         client.on_message = self._on_message
 
+        username = os.environ.get("MQTT_USERNAME")
+        password = os.environ.get("MQTT_PASSWORD")
+        if username:
+            client.username_pw_set(username, password)
+
         try:
             client.connect(host, port, keepalive=30)
         except (OSError, ConnectionRefusedError) as exc:
@@ -62,7 +72,12 @@ class MqttBridge:
             self._client.disconnect()
             self._client = None
 
-    def _on_connect(self, client: mqtt.Client, _userdata, _flags, _reason_code, _properties=None) -> None:
+    def _on_connect(self, client: mqtt.Client, _userdata, _flags, reason_code, _properties=None) -> None:
+        if reason_code != 0:
+            # connect() itself only raises on network-level failures — a
+            # rejected CONNACK (e.g. bad credentials) only surfaces here.
+            logger.warning("MQTT connect rejected by broker: %s — MQTT ingestion disabled", reason_code)
+            return
         client.subscribe(TOPIC_PATTERN)
 
     def _on_message(self, _client: mqtt.Client, _userdata, msg) -> None:
