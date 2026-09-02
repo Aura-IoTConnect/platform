@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
 
-from app.db import alerts, device_types, devices, dispose_engine, get_engine, new_id, rules, verticals
+from app.db import actuator_commands, alerts, device_types, devices, dispose_engine, get_engine, new_id, rules, verticals
 from app.rule_engine import evaluate
 
 
@@ -23,7 +23,15 @@ async def db_conn():
     await dispose_engine()
 
 
-async def _seed_device_with_rule(conn, *, operator: str, threshold: float, severity: str = "CRITICAL"):
+async def _seed_device_with_rule(
+    conn,
+    *,
+    operator: str,
+    threshold: float,
+    severity: str = "CRITICAL",
+    action_type: str = "notify",
+    action_config=None,
+):
     vertical_id = new_id()
     device_type_id = new_id()
     device_id = new_id()
@@ -66,8 +74,8 @@ async def _seed_device_with_rule(conn, *, operator: str, threshold: float, sever
             operator=operator,
             threshold=threshold,
             severity=severity,
-            action_type="notify",
-            action_config=None,
+            action_type=action_type,
+            action_config=action_config,
             enabled=True,
             created_at=now,
         )
@@ -123,3 +131,23 @@ async def test_evaluate_ignores_other_metrics(db_conn):
     created = await evaluate(db_conn, device_id, "humidity", 999.0)
 
     assert created == []
+
+
+async def test_evaluate_actuator_rule_persists_actuator_command(db_conn):
+    device_id, rule_id = await _seed_device_with_rule(
+        db_conn,
+        operator="GT",
+        threshold=10.0,
+        action_type="actuator",
+        action_config={"command": "increase_compressor_duty"},
+    )
+
+    await evaluate(db_conn, device_id, "temperature", 15.0)
+
+    row = (
+        await db_conn.execute(select(actuator_commands).where(actuator_commands.c.device_id == device_id))
+    ).mappings().first()
+    assert row is not None
+    assert row["command"] == "increase_compressor_duty"
+    assert row["source"] == "RULE"
+    assert row["rule_id"] == rule_id

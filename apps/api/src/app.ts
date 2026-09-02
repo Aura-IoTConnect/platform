@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { requireAuth } from "./auth.js";
+import { actuatorCommandsRouter } from "./routes/actuatorCommands.js";
 import { agentsRouter } from "./routes/agents.js";
 import { alertsRouter } from "./routes/alerts.js";
 import { authRouter } from "./routes/auth.js";
@@ -30,6 +31,7 @@ app.use("/api/verticals", verticalsRouter);
 app.use("/api/device-types", deviceTypesRouter);
 app.use("/api/devices", devicesRouter);
 app.use("/api/telemetry", telemetryRouter);
+app.use("/api/actuator-commands", actuatorCommandsRouter);
 app.use("/api/rules", rulesRouter);
 app.use("/api/alerts", alertsRouter);
 app.use("/api/agents", agentsRouter);

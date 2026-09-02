@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.actuator_service import dispatch_command
 from app.db import alerts, devices, new_id, rules
 
 logger = logging.getLogger("rule_engine")
@@ -71,7 +72,7 @@ async def evaluate(conn: AsyncConnection, device_id: str, metric: str, value: fl
 
         if rule["action_type"] == "actuator":
             command = (rule["action_config"] or {}).get("command", "unknown")
-            logger.info("dispatching actuator command=%s device_id=%s rule=%s", command, device_id, rule["name"])
+            await dispatch_command(conn, device_id, command, source="RULE", rule_id=rule["id"])
         elif rule["action_type"] == "webhook":
             logger.info("would call webhook=%s for rule=%s", (rule["action_config"] or {}).get("url"), rule["name"])
         else:

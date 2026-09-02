@@ -225,6 +225,18 @@
   font-size: 0.85rem;
 }
 
+.actuator-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.actuator-panel .device-form {
+  margin: 0;
+}
+
 .metric-chart {
   display: flex;
   flex-direction: column;

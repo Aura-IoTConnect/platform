@@ -11,6 +11,15 @@ interface Reading {
   timestamp: string
 }
 
+interface ActuatorCommand {
+  id: string
+  command: string
+  value: unknown
+  source: 'RULE' | 'MANUAL'
+  createdAt: string
+  rule: { name: string } | null
+}
+
 function agentErrorMessage(err: unknown): string {
   if (err instanceof ApiRequestError && err.status === 503) {
     return 'AI agents are not configured (ANTHROPIC_API_KEY missing in apps/workers/.env).'
@@ -26,11 +35,25 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   const [rotating, setRotating] = useState(false)
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
+  const [commands, setCommands] = useState<ActuatorCommand[]>([])
+  const [commandName, setCommandName] = useState('')
+  const [commandValue, setCommandValue] = useState('')
+  const [sending, setSending] = useState(false)
+  const [actuatorError, setActuatorError] = useState<string | null>(null)
+
+  const loadCommands = () => {
+    apiGet<ActuatorCommand[]>(`/api/actuator-commands?deviceId=${device.id}&limit=10`)
+      .then(setCommands)
+      .catch(() => {})
+  }
+
   useEffect(() => {
     setLoading(true)
     apiGet<Reading[]>(`/api/telemetry?deviceId=${device.id}&limit=50`)
       .then(setReadings)
       .finally(() => setLoading(false))
+    loadCommands()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id])
 
   const byMetric = new Map<string, Reading[]>()
@@ -65,6 +88,27 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
     }
   }
 
+  const sendCommand = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!commandName.trim()) return
+
+    setActuatorError(null)
+    setSending(true)
+    try {
+      await apiSend(`/api/devices/${device.id}/actuator`, 'POST', {
+        command: commandName,
+        value: commandValue || undefined,
+      })
+      setCommandName('')
+      setCommandValue('')
+      loadCommands()
+    } catch {
+      setActuatorError('Failed to send command — is apps/workers running?')
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div className="device-detail">
       <div className="device-detail-header">
@@ -93,6 +137,47 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
           </button>
         </div>
       )}
+
+      <div className="actuator-panel">
+        <form onSubmit={sendCommand} className="device-form">
+          <input
+            type="text"
+            value={commandName}
+            onChange={(e) => setCommandName(e.target.value)}
+            placeholder="Command (e.g. turn_on_fan)"
+          />
+          <input
+            type="text"
+            value={commandValue}
+            onChange={(e) => setCommandValue(e.target.value)}
+            placeholder="Value (optional)"
+          />
+          <button type="submit" disabled={sending}>
+            {sending ? 'Sending…' : 'Send command'}
+          </button>
+        </form>
+
+        {actuatorError && <p className="error">{actuatorError}</p>}
+
+        {commands.length > 0 && (
+          <ul className="record-list">
+            {commands.map((c) => (
+              <li key={c.id}>
+                <div className="record-main">
+                  <span className="record-title">{c.command}</span>
+                  <span className="record-subtitle">
+                    {c.source === 'RULE' && c.rule ? `rule: ${c.rule.name}` : 'manual'} ·{' '}
+                    {new Date(c.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <span className={`status-pill status-${c.source === 'RULE' ? 'acknowledged' : 'online'}`}>
+                  {c.source}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {loading ? (
         <p>Loading…</p>

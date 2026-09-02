@@ -37,6 +37,9 @@ alert_status_enum = ENUM("OPEN", "ACKNOWLEDGED", "RESOLVED", name="alert_status"
 agent_run_status_enum = ENUM(
     "PENDING", "COMPLETED", "FAILED", name="agent_run_status", create_type=False, metadata=metadata
 )
+actuator_command_source_enum = ENUM(
+    "RULE", "MANUAL", name="actuator_command_source", create_type=False, metadata=metadata
+)
 
 
 def new_id() -> str:
@@ -142,6 +145,18 @@ agent_runs = Table(
     Column("status", agent_run_status_enum),
     Column("created_at", DateTime(timezone=True)),
     Column("completed_at", DateTime(timezone=True)),
+)
+
+actuator_commands = Table(
+    "actuator_commands",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("rule_id", String, ForeignKey("rules.id")),
+    Column("command", String),
+    Column("value", JSONB),
+    Column("source", actuator_command_source_enum),
+    Column("created_at", DateTime(timezone=True)),
 )
 
 

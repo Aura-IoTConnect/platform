@@ -28,11 +28,13 @@ agents) works across every industry.
 range) → `Device` → `TelemetryReading`. `Rule` (metric + operator + threshold
 + severity + actionType) is scoped to a `DeviceType`, so one rule set applies
 to every device of that type. A rule breach creates an `Alert` and, on
-CRITICAL severity, auto-triggers the `anomaly-explainer` AI agent. `AgentRun`
-records are optionally scored via `AgentFeedback` (thumbs up/down in the
-Agent Runs tab) — that's the feedback loop on agent quality over time.
-`User` is separate from all of this — it's dashboard/API auth, not part of
-the device/telemetry model.
+CRITICAL severity, auto-triggers the `anomaly-explainer` AI agent. On an
+`actionType: "actuator"` rule, it also writes an `ActuatorCommand`
+(`source: RULE`) — see Actuator control below. `AgentRun` records are
+optionally scored via `AgentFeedback` (thumbs up/down in the Agent Runs
+tab) — that's the feedback loop on agent quality over time. `User` is
+separate from all of this — it's dashboard/API auth, not part of the
+device/telemetry model.
 
 Seeded verticals (`apps/api/prisma/seed.ts`): agri-processing, weather,
 cold-storage, smart-home-office, warehousing, e-health, smart-metering,
@@ -99,11 +101,35 @@ shared token.
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered
    via `app/telemetry_service.py::ingest_reading`): sense (telemetry ingested,
    HTTP or MQTT) → analyze (rules for that device's type + metric) → decide
-   (threshold breached?) → act (create `Alert`, dispatch
-   `notify`/`webhook`/`actuator`) → next reading.
+   (threshold breached?) → act (create `Alert`, dispatch `notify` (logged) /
+   `webhook` (logged, no real HTTP call) / `actuator` (persisted — see
+   below)) → next reading.
 2. **Agent feedback loop**: an `AgentRun`'s output can be scored via
    `AgentFeedback` (`POST /api/agents/runs/:id/feedback`), so agent quality
    is trackable over time instead of being a one-shot, unverified suggestion.
+
+### Actuator control
+
+There's no real hardware behind this — `ActuatorCommand` is the audit trail
+/ dispatch record a real actuator integration would write to, not a live
+device link. Two sources write it, both through
+`apps/workers/app/actuator_service.py::dispatch_command`:
+
+- **`source: RULE`** — `rule_engine.py`, on an `actionType: "actuator"` rule
+  breach, in the same transaction as the `Alert` it's paired with.
+- **`source: MANUAL`** — a dashboard user, via the "Send command" form in a
+  device's detail view. The browser calls `apps/api`'s
+  `POST /api/devices/:id/actuator` (JWT-protected), which proxies
+  server-side to `apps/workers`' `POST /devices/{id}/actuator`
+  (`app/actuator_routes.py`) the same way agent triggers do — see Auth
+  above. `GET /api/actuator-commands?deviceId=` (`apps/api`) reads the
+  history straight from Postgres, no workers round-trip needed.
+
+`callWorkers` (`apps/api/src/workersClient.ts`) catches network-level
+failures (workers unreachable) and returns a normal `502`, not a rejected
+promise — Express 4 doesn't catch async route errors, so this used to be
+able to crash the whole `apps/api` process if workers was down when a proxy
+route fired.
 
 ### Telemetry ingestion transports
 

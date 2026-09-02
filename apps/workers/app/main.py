@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.actuator_routes import router as actuator_router
 from app.agents_routes import router as agents_router
 from app.ingestion import router as ingestion_router
 from app.mqtt_client import mqtt_bridge
@@ -25,6 +26,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="iotplatform-workers", lifespan=lifespan)
 app.include_router(ingestion_router)
 app.include_router(agents_router)
+app.include_router(actuator_router)
 
 
 @app.get("/health")

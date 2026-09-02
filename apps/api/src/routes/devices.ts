@@ -3,12 +3,18 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { generateApiKey, hashApiKey } from "../apiKeys.js";
 import { prisma } from "../db.js";
+import { callWorkers } from "../workersClient.js";
 
 const createDeviceSchema = z.object({
   name: z.string().min(1),
   deviceTypeId: z.string().min(1),
   location: z.string().optional(),
   metadata: z.record(z.unknown()).optional(),
+});
+
+const actuatorCommandSchema = z.object({
+  command: z.string().min(1),
+  value: z.unknown().optional(),
 });
 
 export const devicesRouter = Router();
@@ -75,4 +81,17 @@ devicesRouter.post("/:id/rotate-key", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Device not found" });
   }
+});
+
+// Proxies to apps/workers server-side (WORKERS_API_TOKEN never reaches the
+// browser) — same pattern as the agent-trigger routes. See CLAUDE.md.
+devicesRouter.post("/:id/actuator", async (req, res) => {
+  const parsed = actuatorCommandSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const { status, data } = await callWorkers(`/devices/${req.params.id}/actuator`, parsed.data);
+  res.status(status).json(data);
 });
