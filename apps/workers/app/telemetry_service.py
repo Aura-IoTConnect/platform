@@ -31,9 +31,12 @@ async def ingest_reading(
     async with engine.begin() as conn:
         # device_id is a foreign key on telemetry_readings — check existence
         # first so a bad/unknown id fails cleanly instead of a raw FK
-        # constraint violation (500) from the insert below.
+        # constraint violation (500) from the insert below. A soft-deleted
+        # device (deleted_at set) is treated the same as unknown.
         known = (
-            await conn.execute(select(devices.c.id).where(devices.c.id == device_id))
+            await conn.execute(
+                select(devices.c.id).where(devices.c.id == device_id, devices.c.deleted_at.is_(None))
+            )
         ).first()
         if known is None:
             logger.warning("telemetry for unknown device_id=%s — dropped", device_id)

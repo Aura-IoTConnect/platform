@@ -151,3 +151,25 @@ async def test_evaluate_actuator_rule_persists_actuator_command(db_conn):
     assert row["command"] == "increase_compressor_duty"
     assert row["source"] == "RULE"
     assert row["rule_id"] == rule_id
+
+
+async def test_evaluate_soft_deleted_device_returns_empty(db_conn):
+    device_id, _ = await _seed_device_with_rule(db_conn, operator="GT", threshold=10.0)
+    await db_conn.execute(
+        devices.update().where(devices.c.id == device_id).values(deleted_at=datetime.now(timezone.utc))
+    )
+
+    created = await evaluate(db_conn, device_id, "temperature", 15.0)
+
+    assert created == []
+
+
+async def test_evaluate_soft_deleted_rule_is_ignored_even_if_enabled(db_conn):
+    device_id, rule_id = await _seed_device_with_rule(db_conn, operator="GT", threshold=10.0)
+    await db_conn.execute(
+        rules.update().where(rules.c.id == rule_id).values(deleted_at=datetime.now(timezone.utc))
+    )
+
+    created = await evaluate(db_conn, device_id, "temperature", 15.0)
+
+    assert created == []

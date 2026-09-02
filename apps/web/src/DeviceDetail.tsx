@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
+import { apiDelete, apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import type { Device } from './types'
 
@@ -27,13 +27,22 @@ function agentErrorMessage(err: unknown): string {
   return 'Agent request failed — is apps/workers running?'
 }
 
-export function DeviceDetail({ device, onClose }: { device: Device; onClose: () => void }) {
+export function DeviceDetail({
+  device,
+  onClose,
+  onDeleted,
+}: {
+  device: Device
+  onClose: () => void
+  onDeleted: () => void
+}) {
   const [readings, setReadings] = useState<Reading[]>([])
   const [loading, setLoading] = useState(true)
   const [suggesting, setSuggesting] = useState(false)
   const [agentNotice, setAgentNotice] = useState<string | null>(null)
   const [rotating, setRotating] = useState(false)
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const [commands, setCommands] = useState<ActuatorCommand[]>([])
   const [commandName, setCommandName] = useState('')
@@ -72,6 +81,20 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       setAgentNotice('Failed to rotate API key.')
     } finally {
       setRotating(false)
+    }
+  }
+
+  const deleteDevice = async () => {
+    if (!window.confirm(`Delete ${device.name}? Its telemetry/alert/command history is kept, but it disappears from the dashboard.`)) {
+      return
+    }
+    setDeleting(true)
+    try {
+      await apiDelete(`/api/devices/${device.id}`)
+      onDeleted()
+    } catch {
+      setAgentNotice('Failed to delete device.')
+      setDeleting(false)
     }
   }
 
@@ -119,6 +142,9 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
           </button>
           <button type="button" onClick={suggestAutomation} disabled={suggesting}>
             {suggesting ? 'Thinking…' : 'Suggest automation'}
+          </button>
+          <button type="button" onClick={deleteDevice} disabled={deleting} className="danger-button">
+            {deleting ? 'Deleting…' : 'Delete'}
           </button>
           <button type="button" onClick={onClose}>
             Close

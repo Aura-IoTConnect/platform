@@ -31,7 +31,11 @@ async def evaluate(conn: AsyncConnection, device_id: str, metric: str, value: fl
     new reading. Returns the alerts created (empty if nothing breached)."""
 
     device_row = (
-        await conn.execute(select(devices.c.device_type_id).where(devices.c.id == device_id))
+        await conn.execute(
+            select(devices.c.device_type_id).where(
+                devices.c.id == device_id, devices.c.deleted_at.is_(None)
+            )
+        )
     ).first()
     if device_row is None:
         logger.warning("telemetry for unknown device_id=%s", device_id)
@@ -45,6 +49,7 @@ async def evaluate(conn: AsyncConnection, device_id: str, metric: str, value: fl
                 rules.c.device_type_id == device_type_id,
                 rules.c.metric == metric,
                 rules.c.enabled.is_(True),
+                rules.c.deleted_at.is_(None),
             )
         )
     ).mappings().all()

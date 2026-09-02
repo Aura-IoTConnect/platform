@@ -91,6 +91,19 @@ model Device {
   telemetry        TelemetryReading[]
   alerts           Alert[]
   actuatorCommands ActuatorCommand[]
+  /// Id of the User who created/last updated this device via apps/api.
+  /// Plain string, not a Prisma relation — there's no user-management UI to
+  /// delete a User yet, so an FK's referential-integrity guarantee has no
+  /// real value here, and it would force back-relation arrays onto User for
+  /// every audited model. Null for rows with no attributable user (e.g.
+  /// seeded data).
+  createdBy        String?            @map("created_by")
+  updatedBy        String?            @map("updated_by")
+  /// Soft-delete marker set by DELETE /api/devices/:id. Rows are never hard
+  /// deleted (telemetry/alerts/actuator history stays intact) — reads
+  /// exclude deletedAt != null, and apps/workers ignores ingestion for a
+  /// soft-deleted device the same way it does for an unknown device_id.
+  deletedAt        DateTime?          @map("deleted_at")
   createdAt        DateTime           @default(now()) @map("created_at")
 
   @@map("devices")
@@ -146,6 +159,13 @@ model Rule {
   enabled          Boolean           @default(true)
   alerts           Alert[]
   actuatorCommands ActuatorCommand[]
+  /// See Device.createdBy/updatedBy/deletedAt for the audit-field rationale.
+  createdBy        String?           @map("created_by")
+  updatedBy        String?           @map("updated_by")
+  /// apps/workers' rule_engine.py excludes deletedAt != null rules from
+  /// matching, in addition to the existing `enabled` filter — a soft-deleted
+  /// rule must never fire, even if it was left enabled at delete time.
+  deletedAt        DateTime?         @map("deleted_at")
   createdAt        DateTime          @default(now()) @map("created_at")
 
   @@map("rules")
@@ -171,6 +191,10 @@ model Alert {
   createdAt  DateTime      @default(now()) @map("created_at")
   resolvedAt DateTime?     @map("resolved_at")
   agentRuns  AgentRun[]
+  /// Id of the User who last changed `status` (acknowledge/resolve). No
+  /// createdBy — alerts are system-created by the rule engine, never a
+  /// user. See Device.createdBy for why this isn't a Prisma relation.
+  updatedBy  String?       @map("updated_by")
 
   @@index([status, createdAt])
   @@map("alerts")
