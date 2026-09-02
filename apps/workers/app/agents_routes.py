@@ -7,14 +7,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.agents import AgentsUnavailable, build_anomaly_context, run_agent
 from app.db import alerts, device_types, get_engine, rules
+from app.security import require_workers_token
 
-router = APIRouter(prefix="/agents", tags=["agents"])
+router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(require_workers_token)])
 
 
 class RunAnomalyExplainerRequest(BaseModel):
@@ -48,13 +49,20 @@ async def run_alert_triage() -> dict:
             await conn.execute(select(alerts).where(alerts.c.status == "OPEN"))
         ).mappings().all()
 
+    def age_seconds(created_at: datetime) -> float:
+        # asyncpg/SQLAlchemy can hand back a naive datetime depending on how
+        # the row was written; created_at is always UTC (see rule_engine.py).
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - created_at).total_seconds()
+
     context = {
         "openAlerts": [
             {
                 "alertId": a["id"],
                 "severity": a["severity"],
                 "message": a["message"],
-                "ageSeconds": (datetime.now(timezone.utc) - a["created_at"]).total_seconds(),
+                "ageSeconds": age_seconds(a["created_at"]),
             }
             for a in open_alerts
         ]

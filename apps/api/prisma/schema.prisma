@@ -11,6 +11,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  ADMIN
+  OPERATOR
+
+  @@map("user_role")
+}
+
+/// A dashboard/API user. Only source of auth for apps/api routes — devices
+/// authenticate to apps/workers separately (see WORKERS_API_TOKEN in
+/// apps/workers, not a User row).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(OPERATOR)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
 /// A market/domain the platform serves (cold storage, mining, smart city, ...).
 /// Verticals carry no behavior themselves — they're a grouping for device types.
 model Vertical {
@@ -56,16 +76,22 @@ enum DeviceStatus {
 /// evaluation all key off deviceType, so onboarding a new device is just
 /// picking an existing DeviceType (or defining a new one).
 model Device {
-  id           String             @id @default(cuid())
-  deviceTypeId String             @map("device_type_id")
-  deviceType   DeviceType         @relation(fields: [deviceTypeId], references: [id])
-  name         String
-  location     String?
-  status       DeviceStatus       @default(ONLINE)
-  metadata     Json?
-  telemetry    TelemetryReading[]
-  alerts       Alert[]
-  createdAt    DateTime           @default(now()) @map("created_at")
+  id               String             @id @default(cuid())
+  deviceTypeId     String             @map("device_type_id")
+  deviceType       DeviceType         @relation(fields: [deviceTypeId], references: [id])
+  name             String
+  location         String?
+  status           DeviceStatus       @default(ONLINE)
+  metadata         Json?
+  /// SHA-256 hex digest of the device's ingestion API key. The raw key is
+  /// generated and returned once (create + rotate endpoints), never stored.
+  /// Null means this device has no per-device key — see CLAUDE.md for the
+  /// ingestion auth fallback that applies in that case.
+  apiKeyHash       String?            @unique @map("api_key_hash")
+  telemetry        TelemetryReading[]
+  alerts           Alert[]
+  actuatorCommands ActuatorCommand[]
+  createdAt        DateTime           @default(now()) @map("created_at")
 
   @@map("devices")
 }
@@ -107,19 +133,20 @@ enum AlertSeverity {
 /// every incoming reading for devices of `deviceType`, and on breach creates
 /// an Alert and dispatches `actionType` (notify | webhook | actuator).
 model Rule {
-  id           String        @id @default(cuid())
-  deviceTypeId String        @map("device_type_id")
-  deviceType   DeviceType    @relation(fields: [deviceTypeId], references: [id], onDelete: Cascade)
-  name         String
-  metric       String
-  operator     RuleOperator
-  threshold    Float
-  severity     AlertSeverity @default(WARNING)
-  actionType   String        @map("action_type")
-  actionConfig Json?         @map("action_config")
-  enabled      Boolean       @default(true)
-  alerts       Alert[]
-  createdAt    DateTime      @default(now()) @map("created_at")
+  id               String            @id @default(cuid())
+  deviceTypeId     String            @map("device_type_id")
+  deviceType       DeviceType        @relation(fields: [deviceTypeId], references: [id], onDelete: Cascade)
+  name             String
+  metric           String
+  operator         RuleOperator
+  threshold        Float
+  severity         AlertSeverity     @default(WARNING)
+  actionType       String            @map("action_type")
+  actionConfig     Json?             @map("action_config")
+  enabled          Boolean           @default(true)
+  alerts           Alert[]
+  actuatorCommands ActuatorCommand[]
+  createdAt        DateTime          @default(now()) @map("created_at")
 
   @@map("rules")
 }
@@ -202,4 +229,34 @@ model AgentFeedback {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@map("agent_feedback")
+}
+
+enum ActuatorCommandSource {
+  RULE
+  MANUAL
+
+  @@map("actuator_command_source")
+}
+
+/// A dispatched actuator command — the real implementation behind Rule's
+/// `actionType: "actuator"` (previously just logged, never persisted).
+/// `source: RULE` rows are written by apps/workers/app/rule_engine.py when a
+/// breach fires an actuator rule; `source: MANUAL` rows come from a
+/// dashboard user via POST /api/devices/:id/actuator, proxied server-side to
+/// apps/workers the same way agent triggers are (see workersClient.ts).
+/// There's no real hardware behind this yet — this is the audit trail /
+/// dispatch record a real actuator integration would write to.
+model ActuatorCommand {
+  id        String                @id @default(cuid())
+  deviceId  String                @map("device_id")
+  device    Device                @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ruleId    String?               @map("rule_id")
+  rule      Rule?                 @relation(fields: [ruleId], references: [id])
+  command   String
+  value     Json?
+  source    ActuatorCommandSource
+  createdAt DateTime              @default(now()) @map("created_at")
+
+  @@index([deviceId, createdAt])
+  @@map("actuator_commands")
 }

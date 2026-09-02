@@ -1,4 +1,5 @@
 import { PrismaClient, type RuleOperator, type AlertSeverity } from "@prisma/client";
+import { hashPassword } from "../src/auth.js";
 
 const prisma = new PrismaClient();
 
@@ -649,6 +650,20 @@ async function main() {
       },
       create: agent,
     });
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminEmail && adminPassword) {
+    const passwordHash = await hashPassword(adminPassword);
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { passwordHash, role: "ADMIN" },
+      create: { email: adminEmail, passwordHash, role: "ADMIN" },
+    });
+    console.log(`Upserted admin user ${adminEmail}.`);
+  } else {
+    console.log("ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin user seed.");
   }
 
   console.log(

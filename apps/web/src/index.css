@@ -1,6 +1,7 @@
 :root {
   --text: #6b6375;
   --text-h: #08060d;
+  --text-secondary: #8b8591;
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
@@ -10,6 +11,28 @@
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  /* Semantic status colors — one token per meaning (success/danger/warning/info),
+     each with a translucent -bg/-border pair, mirroring --accent/--accent-bg above.
+     Consolidates what used to be the same 4 hex values hardcoded across 7+ rules
+     in App.css with no shared source of truth. */
+  --success: #16a34a;
+  --success-bg: rgba(22, 163, 74, 0.12);
+  --success-border: rgba(22, 163, 74, 0.35);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.12);
+  --danger-border: rgba(220, 38, 38, 0.35);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.12);
+  --warning-border: rgba(217, 119, 6, 0.35);
+  --info: #2563eb;
+  --info-bg: rgba(37, 99, 235, 0.12);
+  --info-border: rgba(37, 99, 235, 0.35);
+
+  /* One radius scale, applied consistently rather than ad hoc 6px/8px literals. */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-pill: 999px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -34,6 +57,7 @@
   :root {
     --text: #9ca3af;
     --text-h: #f3f4f6;
+    --text-secondary: #8b8a91;
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
@@ -43,6 +67,21 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+    /* Same values App.css previously hardcoded per-rule — dark mode's
+       appearance is unchanged, just backed by tokens now. */
+    --success: #4caf7d;
+    --success-bg: rgba(76, 175, 125, 0.15);
+    --success-border: rgba(76, 175, 125, 0.4);
+    --danger: #ff6b6b;
+    --danger-bg: rgba(255, 107, 107, 0.15);
+    --danger-border: rgba(255, 107, 107, 0.4);
+    --warning: #e0a63e;
+    --warning-bg: rgba(224, 166, 62, 0.15);
+    --warning-border: rgba(224, 166, 62, 0.4);
+    --info: #4c9aff;
+    --info-bg: rgba(76, 154, 255, 0.15);
+    --info-border: rgba(76, 154, 255, 0.4);
   }
 
   #social .button-icon {

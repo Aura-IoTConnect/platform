@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
-import { apiGet, apiSend } from './api'
+import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import type { Alert } from './types'
+
+function agentErrorMessage(err: unknown): string {
+  if (err instanceof ApiRequestError && err.status === 503) {
+    return 'AI agents are not configured (ANTHROPIC_API_KEY missing in apps/workers/.env).'
+  }
+  return 'Agent request failed — is apps/workers running?'
+}
 
 export function AlertsTab() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
+  const [agentNotice, setAgentNotice] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -26,9 +35,44 @@ export function AlertsTab() {
     }
   }
 
+  const explainAlert = async (alertId: string) => {
+    setAgentNotice(null)
+    setPendingAgentId(alertId)
+    try {
+      await apiSendAgent('/api/agents/anomaly-explainer/run', { alertId })
+      setAgentNotice('Explanation generated — see it in the Agent Runs tab.')
+    } catch (err) {
+      setAgentNotice(agentErrorMessage(err))
+    } finally {
+      setPendingAgentId(null)
+    }
+  }
+
+  const triageAlerts = async () => {
+    setAgentNotice(null)
+    setPendingAgentId('triage')
+    try {
+      await apiSendAgent('/api/agents/alert-triage/run', {})
+      setAgentNotice('Triage complete — see the ranking in the Agent Runs tab.')
+    } catch (err) {
+      setAgentNotice(agentErrorMessage(err))
+    } finally {
+      setPendingAgentId(null)
+    }
+  }
+
   return (
     <section>
       {error && <p className="error">{error}</p>}
+
+      {alerts.some((a) => a.status === 'OPEN') && (
+        <div className="agent-toolbar">
+          <button type="button" onClick={triageAlerts} disabled={pendingAgentId === 'triage'}>
+            {pendingAgentId === 'triage' ? 'Triaging…' : 'Triage open alerts'}
+          </button>
+          {agentNotice && <span className="hint">{agentNotice}</span>}
+        </div>
+      )}
 
       {loading ? (
         <p>Loading…</p>
@@ -49,6 +93,13 @@ export function AlertsTab() {
               </div>
               <div className="record-actions">
                 <span className={`status-pill status-${alert.status.toLowerCase()}`}>{alert.status}</span>
+                <button
+                  type="button"
+                  onClick={() => explainAlert(alert.id)}
+                  disabled={pendingAgentId === alert.id}
+                >
+                  {pendingAgentId === alert.id ? 'Explaining…' : 'Explain'}
+                </button>
                 {alert.status === 'OPEN' && (
                   <button type="button" onClick={() => updateStatus(alert.id, 'ACKNOWLEDGED')}>
                     Acknowledge
