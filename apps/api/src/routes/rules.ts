@@ -23,7 +23,7 @@ export const rulesRouter = Router();
 rulesRouter.get("/", async (req, res) => {
   const deviceTypeId = typeof req.query.deviceTypeId === "string" ? req.query.deviceTypeId : undefined;
   const rules = await prisma.rule.findMany({
-    where: deviceTypeId ? { deviceTypeId } : undefined,
+    where: { deviceTypeId, deletedAt: null },
     include: { deviceType: true },
     orderBy: { createdAt: "desc" },
   });
@@ -43,7 +43,9 @@ rulesRouter.post("/", async (req, res) => {
     return;
   }
 
-  const rule = await prisma.rule.create({ data: parsed.data as Prisma.RuleUncheckedCreateInput });
+  const rule = await prisma.rule.create({
+    data: { ...parsed.data, createdBy: req.user!.id } as Prisma.RuleUncheckedCreateInput,
+  });
   res.status(201).json(rule);
 });
 
@@ -57,9 +59,24 @@ rulesRouter.patch("/:id", async (req, res) => {
   try {
     const rule = await prisma.rule.update({
       where: { id: req.params.id },
-      data: { enabled: parsed.data.enabled },
+      data: { enabled: parsed.data.enabled, updatedBy: req.user!.id },
     });
     res.json(rule);
+  } catch {
+    res.status(404).json({ error: "Rule not found" });
+  }
+});
+
+// Soft delete — see devices.ts's DELETE /:id for the rationale. Critically,
+// apps/workers' rule_engine.py excludes deletedAt != null rules from
+// matching, so a deleted rule stops firing even if it was left enabled.
+rulesRouter.delete("/:id", async (req, res) => {
+  try {
+    await prisma.rule.update({
+      where: { id: req.params.id },
+      data: { deletedAt: new Date(), updatedBy: req.user!.id },
+    });
+    res.status(204).end();
   } catch {
     res.status(404).json({ error: "Rule not found" });
   }

@@ -34,6 +34,16 @@ export async function apiSend<T>(path: string, method: 'POST' | 'PATCH', body: u
   return res.json()
 }
 
+export async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  handleResponse(res)
+  if (!res.ok) throw new Error(`DELETE ${path} failed`)
+  // 204 No Content — no body to parse.
+}
+
 export class ApiRequestError extends Error {
   status: number
 

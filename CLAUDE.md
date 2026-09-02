@@ -129,7 +129,30 @@ device link. Two sources write it, both through
 failures (workers unreachable) and returns a normal `502`, not a rejected
 promise — Express 4 doesn't catch async route errors, so this used to be
 able to crash the whole `apps/api` process if workers was down when a proxy
-route fired.
+route fired. It also bounds the request with a 30s `AbortSignal.timeout` —
+`fetch` has no default timeout, so a hung/unresponsive workers process
+(distinct from a cleanly-refused connection) could otherwise hang the
+calling request indefinitely instead of failing fast.
+
+### Audit fields & soft delete
+
+`Device` and `Rule` carry `createdBy`/`updatedBy` (a `User.id`, set by
+`apps/api`'s mutating routes — `null` for rows with no attributable user,
+e.g. seeded data) and `deletedAt`. `Alert` carries `updatedBy` only — alerts
+are system-created by the rule engine, never a user, so there's no
+`createdBy`, and they're never deleted (only resolved). These are plain
+string/datetime columns, not Prisma relations to `User` — there's no
+user-management UI to ever delete a `User`, so an FK's referential-integrity
+guarantee has no real value yet and would force back-relation arrays onto
+`User` for every audited model.
+
+`DELETE /api/devices/:id` and `DELETE /api/rules/:id` are soft deletes:
+`deletedAt` is set, the row (and its telemetry/alert/actuator-command
+history) is never removed. Every read (`GET` list/detail, and `apps/workers`'
+`rule_engine.py`/`telemetry_service.py`/`security.py`) excludes
+`deletedAt != null` rows — a soft-deleted device is treated exactly like an
+unknown `device_id` for ingestion/auth, and a soft-deleted rule never fires
+even if it was left `enabled: true` at delete time.
 
 ### Telemetry ingestion transports
 

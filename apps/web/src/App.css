@@ -225,6 +225,16 @@
   font-size: 0.85rem;
 }
 
+.device-detail-header button.danger-button {
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.device-detail-header button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .actuator-panel {
   display: flex;
   flex-direction: column;

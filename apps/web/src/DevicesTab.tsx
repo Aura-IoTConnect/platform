@@ -96,7 +96,16 @@ export function DevicesTab() {
         </div>
       )}
 
-      {selectedDevice && <DeviceDetail device={selectedDevice} onClose={() => setSelectedId(null)} />}
+      {selectedDevice && (
+        <DeviceDetail
+          device={selectedDevice}
+          onClose={() => setSelectedId(null)}
+          onDeleted={() => {
+            setSelectedId(null)
+            load()
+          }}
+        />
+      )}
 
       {loading ? (
         <p>Loading…</p>

@@ -36,6 +36,7 @@ alertsRouter.patch("/:id", async (req, res) => {
       data: {
         status: parsed.data.status,
         resolvedAt: parsed.data.status === "RESOLVED" ? new Date() : null,
+        updatedBy: req.user!.id,
       },
     });
     res.json(alert);

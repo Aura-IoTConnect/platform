@@ -47,12 +47,17 @@ async def check_device_auth(device_id: str, authorization: Optional[str] = Heade
     engine = get_engine()
     async with engine.connect() as conn:
         row = (
-            await conn.execute(select(devices.c.api_key_hash).where(devices.c.id == device_id))
+            await conn.execute(
+                select(devices.c.api_key_hash).where(
+                    devices.c.id == device_id, devices.c.deleted_at.is_(None)
+                )
+            )
         ).first()
 
     if row is None:
-        # Unknown device — let the ingestion handler's own lookup produce
-        # the clean "unknown_device" response rather than failing auth first.
+        # Unknown (or soft-deleted) device — let the ingestion handler's own
+        # lookup produce the clean "unknown_device" response rather than
+        # failing auth first.
         return
 
     token = _extract_bearer(authorization)

@@ -58,6 +58,7 @@ devices = Table(
     Column("status", device_status_enum),
     Column("metadata", JSONB),
     Column("api_key_hash", String),
+    Column("deleted_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
 )
 
@@ -107,6 +108,7 @@ rules = Table(
     Column("action_type", String),
     Column("action_config", JSONB),
     Column("enabled", Boolean),
+    Column("deleted_at", DateTime(timezone=True)),
     Column("created_at", DateTime(timezone=True)),
 )
 
