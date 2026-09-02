@@ -17,12 +17,12 @@
   align-items: center;
   gap: 0.75rem;
   font-size: 0.85rem;
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
 }
 
 .account button {
   padding: 0.3rem 0.7rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -45,7 +45,7 @@
 
 .login-form input {
   padding: 0.6rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -53,7 +53,7 @@
 
 .login-form button {
   padding: 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   color: var(--accent);
   background: var(--accent-bg);
@@ -76,7 +76,7 @@
 
 .agent-toolbar button {
   padding: 0.4rem 0.8rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   color: var(--accent);
   background: var(--accent-bg);
@@ -117,7 +117,7 @@
   flex: 1;
   min-width: 140px;
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -125,7 +125,7 @@
 
 .device-form button {
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
   color: var(--accent);
   background: var(--accent-bg);
@@ -133,7 +133,7 @@
 }
 
 .hint {
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 0.85rem;
   margin-bottom: 1rem;
 }
@@ -145,9 +145,9 @@
   gap: 0.6rem;
   padding: 0.75rem 1rem;
   margin: 0 0 1rem;
-  border: 1px solid #e0a63e55;
-  border-radius: 8px;
-  background: #e0a63e11;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  background: var(--warning-bg);
 }
 
 .api-key-banner p {
@@ -157,7 +157,7 @@
 
 .api-key-banner code {
   padding: 0.3rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   font-size: 0.85rem;
   word-break: break-all;
@@ -165,7 +165,7 @@
 
 .api-key-banner button {
   padding: 0.25rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -188,7 +188,7 @@
   gap: 0.75rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
 }
 
 .record-list li.clickable {
@@ -203,7 +203,7 @@
   margin: 1rem 0;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -217,7 +217,7 @@
 
 .device-detail-header button {
   padding: 0.25rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -256,7 +256,7 @@
 }
 
 .record-subtitle {
-  color: var(--text-secondary, #888);
+  color: var(--text-secondary);
   font-size: 0.85rem;
 }
 
@@ -269,7 +269,7 @@
 
 .record-actions button {
   padding: 0.25rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: transparent;
   color: inherit;
@@ -284,7 +284,7 @@
 
 .status-pill {
   padding: 0.15rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.75rem;
   border: 1px solid var(--border);
   white-space: nowrap;
@@ -293,52 +293,52 @@
 .status-online,
 .status-completed,
 .status-resolved {
-  color: #4caf7d;
-  border-color: #4caf7d55;
+  color: var(--success);
+  border-color: var(--success-border);
 }
 
 .status-offline,
 .status-failed {
-  color: #ff6b6b;
-  border-color: #ff6b6b55;
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 
 .status-maintenance,
 .status-acknowledged,
 .status-pending {
-  color: #e0a63e;
-  border-color: #e0a63e55;
+  color: var(--warning);
+  border-color: var(--warning-border);
 }
 
 .status-open {
-  color: #ff6b6b;
-  border-color: #ff6b6b55;
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
 
 .severity-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
 }
 
 .severity-info {
-  background: #4c9aff;
+  background: var(--info);
 }
 
 .severity-warning {
-  background: #e0a63e;
+  background: var(--warning);
 }
 
 .severity-critical {
-  background: #ff6b6b;
+  background: var(--danger);
 }
 
 .agent-output {
   margin: 0.5rem 0 0;
   padding: 0.5rem;
   font-size: 0.8rem;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   overflow-x: auto;
   max-width: 480px;
@@ -349,5 +349,5 @@
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--danger);
 }
