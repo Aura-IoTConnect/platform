@@ -1,7 +1,0 @@
-# Single shared dev credential (see mosquitto.passwd) restricted to the
-# telemetry topic namespace — same shared-secret tradeoff as WORKERS_API_TOKEN
-# elsewhere in this repo, documented in CLAUDE.md. Real per-device MQTT auth
-# would need Mosquitto's dynamic-security plugin or per-client certs, not
-# implemented here.
-user iotplatform
-topic readwrite telemetry/#

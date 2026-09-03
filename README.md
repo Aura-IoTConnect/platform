@@ -62,8 +62,12 @@ curl -X POST http://localhost:8000/ingestion/telemetry \
   -H 'content-type: application/json' \
   -d '{"device_id":"<cold-storage-device-id>","metric":"temperature","value":-2.5}'
 
-# or MQTT (topic: telemetry/<device_id>/<metric>):
-mosquitto_pub -h localhost -t "telemetry/<cold-storage-device-id>/temperature" -m '{"value": -2.5}'
+# or MQTT (topic: telemetry/<device_id>/<metric>) — seeded demo devices
+# never got their own MQTT credential (only devices created via
+# POST /api/devices do, see CLAUDE.md's "Per-device MQTT auth"), so use the
+# shared fallback credential from apps/workers/.env instead:
+mosquitto_pub -h localhost -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" \
+  -t "telemetry/<cold-storage-device-id>/temperature" -m '{"value": -2.5}'
 ```
 
 Breaches the seeded cold-storage freeze-alarm rule (device id from
