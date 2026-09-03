@@ -83,18 +83,66 @@ callers reach them by two different paths:
   demo devices, which never got one) falls back to the single shared
   `WORKERS_API_TOKEN` instead; if that's also unset, ingestion for that
   device is open (dev default, same convention as `ANTHROPIC_API_KEY`).
-  MQTT ingestion is gated separately, at the broker: Mosquitto requires a
-  username/password (`infra/mosquitto.passwd` + `mosquitto.acl`, mounted by
-  `docker-compose.yml`) restricted to the `telemetry/#` topic namespace —
-  one shared credential for every publisher, not per-device like the HTTP
-  path's `Device.apiKeyHash`. Set via `MQTT_USERNAME`/`MQTT_PASSWORD` in
-  `apps/workers/.env` (the subscriber) and the same in whatever publishes
-  (e.g. `scripts/simulate_fleet.py`). Real per-device MQTT auth would need
-  Mosquitto's dynamic-security plugin or per-client certs — not implemented.
+  MQTT ingestion is gated separately, at the broker, with per-device
+  credentials matching the HTTP path — see Per-device MQTT auth below.
 
 Don't assume a request reaching `apps/workers` was authenticated as a
 specific user — at most it proves possession of a device's key or the one
 shared token.
+
+### Per-device MQTT auth
+
+Mosquitto's **dynamic-security plugin** (`mosquitto_dynamic_security.so`,
+bundled in the `eclipse-mosquitto:2` image, configured via
+`infra/mosquitto.conf`) replaces the old single-shared-credential setup —
+each device gets its own MQTT user (`username = device_id`), reusing the
+same raw key `apps/api` already generates for HTTP ingestion
+(`Device.apiKeyHash`), so rotating a device's key rotates both at once.
+
+- **Provisioning** (`apps/workers/app/mqtt_dynsec.py`) speaks the plugin's
+  JSON control-topic protocol directly over MQTT (publish a command to
+  `$CONTROL/dynamic-security/v1`, read the correlated response off
+  `$CONTROL/dynamic-security/v1/response`) via paho-mqtt, rather than
+  shelling out to the `mosquitto_ctrl` CLI — no dependency on the CLI or
+  Docker being available wherever `apps/workers` actually runs.
+- **Roles**: `device-publisher` (publish-only, and — via dynsec's `%u`
+  topic-substitution — scoped to `telemetry/<own username>/#`, so a device's
+  credential can publish its own telemetry but can't spoof another device's;
+  a device never needs to subscribe). `shared-publisher` (publish-only,
+  unscoped `telemetry/#`) and `telemetry-subscriber` (subscribe-only,
+  unscoped `telemetry/#`, used by `apps/workers`' own MQTT bridge,
+  `mqtt_client.py`, to actually consume messages) both exist only for the
+  shared fallback credential (`MQTT_USERNAME`/`MQTT_PASSWORD`) — it
+  legitimately publishes on behalf of many device_ids (unprovisioned/demo
+  devices, `scripts/simulate_fleet.py`), so it can't be scoped like a
+  per-device client and gets its own separate role instead of
+  `device-publisher`.
+- **Bootstrap** (`ensure_bootstrap()`, called once at `apps/workers` startup,
+  `main.py`'s lifespan) creates those two roles, provisions the shared
+  fallback credential into dynsec, and deletes the plugin's auto-created
+  `democlient` demo account. Idempotent by checking state first
+  (`getRole`/`getClient`) rather than tolerating "already exists" errors
+  after the fact — some dynsec errors are a generic `"Internal error"`,
+  too fragile to string-match safely.
+- **Per-device provisioning**: `apps/api`'s device routes
+  (`src/routes/devices.ts`) call `apps/workers`' `POST
+  /devices/{id}/mqtt-credentials` (`app/device_mqtt_routes.py`, behind
+  `require_workers_token` like other workers-facing endpoints — see Auth
+  above) on device create and on `rotate-key`, passing the same raw
+  `apiKey`. Best-effort: a failure (workers or the broker down) doesn't
+  block device creation/rotation, which still work over HTTP — the response
+  carries a `mqttProvisioned` boolean for the caller to know whether the
+  MQTT credential is actually in sync.
+- **Bootstrap admin credentials**: the plugin self-generates an `admin` user
+  with a random password on first boot, written to
+  `infra/mosquitto-dynsec-state/dynamic-security.json.pw` (bind-mounted, so
+  `apps/workers` — running natively on the host, not in Docker — can read it
+  directly). `MQTT_DYNSEC_ADMIN_PASSWORD` overrides this for deployments
+  where that file isn't reachable.
+- Not implemented: deprovisioning on device delete (`deprovision_device()`
+  exists and is called from `DELETE /devices/{id}/mqtt-credentials`, but no
+  `apps/api` device-delete route calls it yet — soft-delete support lives on
+  a sibling branch/PR).
 
 ### The two loops
 

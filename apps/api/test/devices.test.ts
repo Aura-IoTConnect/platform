@@ -84,6 +84,22 @@ describe("device api keys", () => {
     createdDeviceId = res.body.id;
   });
 
+  it("creates the device even when MQTT provisioning fails (workers unreachable in CI)", async () => {
+    // Regression coverage for the same "workers is optional" contract as
+    // actuator.test.ts: MQTT credential provisioning is best-effort, layered
+    // on top of the apiKeyHash that's already the source of truth, so it
+    // must never block device creation. CI doesn't run apps/workers, so this
+    // exercises exactly that degraded path.
+    const res = await request(app)
+      .post("/api/devices")
+      .set("authorization", `Bearer ${token}`)
+      .send({ name: "vitest device (mqtt check)", deviceTypeId });
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.mqttProvisioned).toBe("boolean");
+    await prisma.device.delete({ where: { id: res.body.id } }).catch(() => {});
+  });
+
   it("omits apiKeyHash from list and detail responses", async () => {
     const list = await request(app).get("/api/devices").set("authorization", `Bearer ${token}`);
     expect(list.body.every((d: Record<string, unknown>) => !("apiKeyHash" in d))).toBe(true);
@@ -101,6 +117,7 @@ describe("device api keys", () => {
       .set("authorization", `Bearer ${token}`);
     expect(first.status).toBe(200);
     expect(typeof first.body.apiKey).toBe("string");
+    expect(typeof first.body.mqttProvisioned).toBe("boolean");
 
     const second = await request(app)
       .post(`/api/devices/${createdDeviceId}/rotate-key`)
