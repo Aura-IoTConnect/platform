@@ -111,6 +111,42 @@ describe("device api keys", () => {
     expect(detail.body.apiKeyHash).toBeUndefined();
   });
 
+  it("omits the nested deviceType.provisionSecretHash from create/list/detail responses", async () => {
+    // Regression test: deviceTypes.ts hides provisionSecretHash from its own
+    // routes, but devices.ts independently includes the same deviceType
+    // nested in every device response — each of those needs its own
+    // omission, or the hash leaks through a different endpoint.
+    await prisma.deviceType.update({
+      where: { id: deviceTypeId },
+      data: { provisionKey: "vitest-leak-check-key", provisionSecretHash: "vitest-leak-check-hash" },
+    });
+
+    try {
+      const created = await request(app)
+        .post("/api/devices")
+        .set("authorization", `Bearer ${token}`)
+        .send({ name: "vitest device (provision leak check)", deviceTypeId });
+      expect(created.body.deviceType.provisionSecretHash).toBeUndefined();
+      expect(created.body.deviceType.provisionKey).toBe("vitest-leak-check-key");
+      await prisma.device.delete({ where: { id: created.body.id } }).catch(() => {});
+
+      const list = await request(app).get("/api/devices").set("authorization", `Bearer ${token}`);
+      expect(list.body.every((d: { deviceType: Record<string, unknown> }) => !("provisionSecretHash" in d.deviceType))).toBe(
+        true,
+      );
+
+      const detail = await request(app)
+        .get(`/api/devices/${createdDeviceId}`)
+        .set("authorization", `Bearer ${token}`);
+      expect(detail.body.deviceType.provisionSecretHash).toBeUndefined();
+    } finally {
+      await prisma.deviceType.update({
+        where: { id: deviceTypeId },
+        data: { provisionKey: null, provisionSecretHash: null },
+      });
+    }
+  });
+
   it("rotate-key returns a new one-time apiKey", async () => {
     const first = await request(app)
       .post(`/api/devices/${createdDeviceId}/rotate-key`)
