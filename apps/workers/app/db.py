@@ -121,6 +121,7 @@ alerts = Table(
     Column("status", alert_status_enum),
     Column("created_at", DateTime(timezone=True)),
     Column("resolved_at", DateTime(timezone=True)),
+    Column("last_notified_at", DateTime(timezone=True)),
 )
 
 agents = Table(

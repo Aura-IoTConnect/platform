@@ -102,11 +102,45 @@ shared token.
    via `app/telemetry_service.py::ingest_reading`): sense (telemetry ingested,
    HTTP or MQTT) → analyze (rules for that device's type + metric) → decide
    (threshold breached?) → act (create `Alert`, dispatch `notify` (logged) /
-   `webhook` (logged, no real HTTP call) / `actuator` (persisted — see
+   `webhook` (a real HTTP POST — see below) / `actuator` (persisted — see
    below)) → next reading.
 2. **Agent feedback loop**: an `AgentRun`'s output can be scored via
    `AgentFeedback` (`POST /api/agents/runs/:id/feedback`), so agent quality
    is trackable over time instead of being a one-shot, unverified suggestion.
+
+### Alert dedup, auto-clear, and notify cooldown
+
+`rule_engine.py::evaluate` keeps at most one active (`OPEN`/`ACKNOWLEDGED`)
+`Alert` per `(device, rule)` pair instead of inserting a new row on every
+breaching reading — it looks up the most recent alert for that pair first:
+
+- **Already active + still breaching**: no new `Alert` row, no repeat
+  notify/webhook dispatch (actuator dispatch is the one exception — see
+  Actuator control below, it's a continuous control signal, not a
+  notification, so it fires on every breaching reading regardless).
+- **Active but reading no longer breaches**: auto-cleared — `status` →
+  `RESOLVED`, `resolvedAt` set — rather than left for an operator to close
+  by hand.
+- **No active alert + breaching**: a new episode. A new `Alert` row is
+  always created (for history), but if the *previous* episode for this pair
+  notified within `NOTIFY_COOLDOWN_SECONDS` (env var, default 300s, checked
+  against `Alert.lastNotifiedAt`), this episode's notify/webhook dispatch is
+  suppressed — flapping-protection for a metric oscillating around its
+  threshold, without losing the alert history.
+
+`webhook` actionType dispatch (`apps/workers/app/webhook_service.py`) is a
+real `httpx` POST of `{ruleId, ruleName, deviceId, metric, value, severity,
+alertId}` to `Rule.actionConfig.url`, best-effort like every other external
+call in this project (timeout + logged failure, never raised) — it used to
+just be a log line. `notify` actionType is still logged only, not a real
+delivery channel (email/SMS/Slack) — not implemented.
+
+Because this dispatch involves real network I/O, `evaluate()` never makes
+the HTTP call itself — it hands back a `pendingWebhook` (`{url, payload}` or
+`None`) per created alert, and `telemetry_service.py::ingest_reading`
+dispatches it *after* its DB transaction commits, the same reason the
+CRITICAL → `anomaly-explainer` trigger already happens post-transaction:
+neither a webhook call nor an LLM call should hold a DB connection open.
 
 ### Actuator control
 
