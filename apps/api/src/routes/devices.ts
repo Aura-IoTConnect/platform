@@ -25,6 +25,18 @@ function omitApiKeyHash<T extends { apiKeyHash: string | null }>(device: T): Omi
   return rest;
 }
 
+// Same idea, for the nested deviceType's provisioning secret hash — every
+// route here that includes { deviceType: ... } must strip this too, or it
+// leaks the device type's provisioning credential fingerprint through a
+// device response even though deviceTypes.ts already hides it from its own
+// routes. Only call this where `deviceType` was actually included.
+function omitNestedProvisionSecretHash<T extends { deviceType: { provisionSecretHash: string | null } }>(
+  device: T,
+): T & { deviceType: Omit<T["deviceType"], "provisionSecretHash"> } {
+  const { provisionSecretHash: _provisionSecretHash, ...deviceTypeRest } = device.deviceType;
+  return { ...device, deviceType: deviceTypeRest } as T & { deviceType: Omit<T["deviceType"], "provisionSecretHash"> };
+}
+
 // Best-effort: MQTT provisioning is a nice-to-have layered on top of the
 // HTTP apiKeyHash (the source of truth), not a hard dependency — a device
 // still works over HTTP ingestion even if apps/workers or the broker is
@@ -42,7 +54,7 @@ devicesRouter.get("/", async (_req, res) => {
     include: { deviceType: { include: { vertical: true } } },
     orderBy: { createdAt: "desc" },
   });
-  res.json(devices.map(omitApiKeyHash));
+  res.json(devices.map(omitApiKeyHash).map(omitNestedProvisionSecretHash));
 });
 
 devicesRouter.get("/:id", async (req, res) => {
@@ -54,7 +66,7 @@ devicesRouter.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Device not found" });
     return;
   }
-  res.json(omitApiKeyHash(device));
+  res.json(omitNestedProvisionSecretHash(omitApiKeyHash(device)));
 });
 
 devicesRouter.post("/", async (req, res) => {
@@ -80,7 +92,7 @@ devicesRouter.post("/", async (req, res) => {
   const mqttProvisioned = await provisionMqttCredentials(device.id, apiKey);
   // apiKey is shown exactly once — the device must store it now, since only
   // its hash is kept from here on. Same key works for HTTP and MQTT ingestion.
-  res.status(201).json({ ...omitApiKeyHash(device), apiKey, mqttProvisioned });
+  res.status(201).json({ ...omitNestedProvisionSecretHash(omitApiKeyHash(device)), apiKey, mqttProvisioned });
 });
 
 devicesRouter.post("/:id/rotate-key", async (req, res) => {

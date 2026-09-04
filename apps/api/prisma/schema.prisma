@@ -60,6 +60,18 @@ model DeviceType {
   rules       Rule[]
   createdAt   DateTime @default(now()) @map("created_at")
 
+  // Self-service device provisioning (see CLAUDE.md's "Self-service device
+  // provisioning" section) — lets a device create its own Device row + get
+  // its own apiKey via apps/workers' POST /ingestion/provision, instead of
+  // an operator creating the Device row by hand first. provisionKey is a
+  // public-ish lookup identifier (like a client ID, meant to be embedded in
+  // firmware); provisionSecretHash is the SHA-256 hash of the actual proof
+  // of authorization, generated once via POST
+  // /api/device-types/:id/provisioning-secret and shown exactly then. Both
+  // null until an operator generates one — provisioning is opt-in per type.
+  provisionKey        String? @unique @map("provision_key")
+  provisionSecretHash String? @map("provision_secret_hash")
+
   @@unique([verticalId, key])
   @@map("device_types")
 }

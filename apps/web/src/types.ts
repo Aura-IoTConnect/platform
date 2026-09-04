@@ -14,6 +14,10 @@ export interface DeviceType {
   description: string
   metrics: { key: string; label: string; unit: string; min?: number; max?: number }[]
   vertical?: Vertical
+  // Public lookup identifier for self-service device provisioning (see
+  // CLAUDE.md) — null until an operator generates one. Never the secret
+  // itself, which is only ever shown once, at generation time.
+  provisionKey: string | null
 }
 
 export interface Device {

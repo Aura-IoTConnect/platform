@@ -13,6 +13,10 @@ export function DevicesTab() {
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [newApiKey, setNewApiKey] = useState<{ deviceName: string; apiKey: string } | null>(null)
+  const [newProvisioningSecret, setNewProvisioningSecret] = useState<{
+    provisionKey: string
+    provisionSecret: string
+  } | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -51,7 +55,26 @@ export function DevicesTab() {
     }
   }
 
+  const handleGenerateProvisioningSecret = async () => {
+    if (!deviceTypeId) return
+    setError(null)
+    try {
+      const secret = await apiSend<{ provisionKey: string; provisionSecret: string }>(
+        `/api/device-types/${deviceTypeId}/provisioning-secret`,
+        'POST',
+        undefined,
+      )
+      setNewProvisioningSecret(secret)
+      load()
+    } catch {
+      setError('Failed to generate provisioning secret')
+    }
+  }
+
   const selectedDevice = devices.find((d) => d.id === selectedId) ?? null
+  const selectedDeviceType = verticals
+    .flatMap((v) => v.deviceTypes)
+    .find((dt) => dt.id === deviceTypeId)
 
   return (
     <section>
@@ -82,6 +105,24 @@ export function DevicesTab() {
         <button type="submit">Add device</button>
       </form>
 
+      {selectedDeviceType && (
+        <p className="hint">
+          {selectedDeviceType.provisionKey ? (
+            <>
+              Self-service provisioning is on for <strong>{selectedDeviceType.name}</strong> — devices of this type
+              can create themselves via <code>POST /ingestion/provision</code>.{' '}
+            </>
+          ) : (
+            <>
+              <strong>{selectedDeviceType.name}</strong> has no self-service provisioning credential yet.{' '}
+            </>
+          )}
+          <button type="button" onClick={handleGenerateProvisioningSecret} style={{ marginLeft: '0.4rem' }}>
+            {selectedDeviceType.provisionKey ? 'Rotate provisioning key' : 'Generate provisioning key'}
+          </button>
+        </p>
+      )}
+
       {error && <p className="error">{error}</p>}
 
       {newApiKey && (
@@ -91,6 +132,24 @@ export function DevicesTab() {
           </p>
           <code>{newApiKey.apiKey}</code>
           <button type="button" onClick={() => setNewApiKey(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {newProvisioningSecret && (
+        <div className="api-key-banner">
+          <p>
+            Provisioning credential — save it now, the secret won't be shown again. A device presents both to{' '}
+            <code>POST /ingestion/provision</code> to create itself:
+          </p>
+          <p>
+            provisionKey: <code>{newProvisioningSecret.provisionKey}</code>
+          </p>
+          <p>
+            provisionSecret: <code>{newProvisioningSecret.provisionSecret}</code>
+          </p>
+          <button type="button" onClick={() => setNewProvisioningSecret(null)}>
             Dismiss
           </button>
         </div>
