@@ -2,7 +2,7 @@
 apps/api/prisma). Each test runs inside a transaction that's rolled back at
 the end, so nothing here touches the seeded data."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -151,3 +151,117 @@ async def test_evaluate_actuator_rule_persists_actuator_command(db_conn):
     assert row["command"] == "increase_compressor_duty"
     assert row["source"] == "RULE"
     assert row["rule_id"] == rule_id
+
+
+async def test_evaluate_dedupes_repeat_breach(db_conn):
+    device_id, _ = await _seed_device_with_rule(db_conn, operator="GT", threshold=10.0)
+
+    first = await evaluate(db_conn, device_id, "temperature", 15.0)
+    second = await evaluate(db_conn, device_id, "temperature", 16.0)
+
+    assert len(first) == 1
+    assert second == []  # already alerting — no duplicate row, nothing "newly created"
+
+    rows = (await db_conn.execute(select(alerts).where(alerts.c.device_id == device_id))).mappings().all()
+    assert len(rows) == 1
+    assert rows[0]["status"] == "OPEN"
+
+
+async def test_evaluate_auto_clears_when_reading_recovers(db_conn):
+    device_id, _ = await _seed_device_with_rule(db_conn, operator="GT", threshold=10.0)
+
+    await evaluate(db_conn, device_id, "temperature", 15.0)
+    cleared = await evaluate(db_conn, device_id, "temperature", 5.0)
+
+    assert cleared == []
+    row = (await db_conn.execute(select(alerts).where(alerts.c.device_id == device_id))).mappings().first()
+    assert row["status"] == "RESOLVED"
+    assert row["resolved_at"] is not None
+
+
+async def test_evaluate_recreates_alert_after_recovery_and_rebreach(db_conn):
+    device_id, _ = await _seed_device_with_rule(db_conn, operator="GT", threshold=10.0)
+
+    await evaluate(db_conn, device_id, "temperature", 15.0)  # episode 1: breach
+    await evaluate(db_conn, device_id, "temperature", 5.0)  # recovers -> resolved
+
+    # Push the resolved episode's last_notified_at into the past so this test
+    # exercises the "cooldown elapsed" path without depending on (or having
+    # to change) NOTIFY_COOLDOWN_SECONDS' 300s default.
+    await db_conn.execute(
+        alerts.update()
+        .where(alerts.c.device_id == device_id)
+        .values(last_notified_at=datetime.now(timezone.utc) - timedelta(seconds=400))
+    )
+
+    second_episode = await evaluate(db_conn, device_id, "temperature", 20.0)
+
+    assert len(second_episode) == 1
+    rows = (await db_conn.execute(select(alerts).where(alerts.c.device_id == device_id))).mappings().all()
+    assert len(rows) == 2  # history preserved: resolved episode + new one
+    assert sum(1 for r in rows if r["status"] == "OPEN") == 1
+
+
+async def test_evaluate_webhook_rule_returns_pending_dispatch(db_conn):
+    # evaluate() must not make the HTTP call itself (see rule_engine.py's
+    # module docstring) — it hands back enough for the caller to dispatch
+    # after its transaction commits.
+    device_id, rule_id = await _seed_device_with_rule(
+        db_conn,
+        operator="GT",
+        threshold=10.0,
+        action_type="webhook",
+        action_config={"url": "https://example.org/hooks/test"},
+    )
+
+    created = await evaluate(db_conn, device_id, "temperature", 15.0)
+
+    assert len(created) == 1
+    pending = created[0]["pendingWebhook"]
+    assert pending is not None
+    assert pending["url"] == "https://example.org/hooks/test"
+    assert pending["payload"]["ruleId"] == rule_id
+    assert pending["payload"]["value"] == 15.0
+
+
+async def test_evaluate_notify_cooldown_suppresses_recent_repeat_episode(db_conn):
+    device_id, _ = await _seed_device_with_rule(
+        db_conn,
+        operator="GT",
+        threshold=10.0,
+        action_type="webhook",
+        action_config={"url": "https://example.org/hooks/test"},
+    )
+
+    await evaluate(db_conn, device_id, "temperature", 15.0)  # episode 1 — notifies now
+    await evaluate(db_conn, device_id, "temperature", 5.0)  # recovers -> resolved
+
+    # last_notified_at is "just now" — well within the 300s default cooldown.
+    second_episode = await evaluate(db_conn, device_id, "temperature", 20.0)
+
+    assert len(second_episode) == 1  # alert row still created, for history
+    assert second_episode[0]["pendingWebhook"] is None
+
+    rows = (await db_conn.execute(select(alerts).where(alerts.c.device_id == device_id))).mappings().all()
+    assert len(rows) == 2
+
+
+async def test_evaluate_actuator_dispatch_not_deduped_while_active(db_conn):
+    # Actuator dispatch is a continuous control signal, not a notification —
+    # unlike Alert rows and notify/webhook, it must keep firing on every
+    # breaching reading even while the alert is already active.
+    device_id, rule_id = await _seed_device_with_rule(
+        db_conn,
+        operator="GT",
+        threshold=10.0,
+        action_type="actuator",
+        action_config={"command": "increase_compressor_duty"},
+    )
+
+    await evaluate(db_conn, device_id, "temperature", 15.0)
+    await evaluate(db_conn, device_id, "temperature", 16.0)
+
+    rows = (
+        await db_conn.execute(select(actuator_commands).where(actuator_commands.c.device_id == device_id))
+    ).mappings().all()
+    assert len(rows) == 2
