@@ -48,17 +48,25 @@ model Vertical {
 /// metric taxonomy (name/unit/range) that devices of this type report, so the
 /// same telemetry/rule/alert pipeline works generically across verticals.
 model DeviceType {
-  id          String   @id @default(cuid())
-  verticalId  String   @map("vertical_id")
-  vertical    Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
-  key         String
-  name        String
-  description String
+  id             String   @id @default(cuid())
+  verticalId     String   @map("vertical_id")
+  vertical       Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  key            String
+  name           String
+  description    String
   /// Array of { key, label, unit, min?, max? } describing expected metrics.
-  metrics     Json
-  devices     Device[]
-  rules       Rule[]
-  createdAt   DateTime @default(now()) @map("created_at")
+  metrics        Json
+  /// Optional array of { type, metricKey?, label? } declaring which
+  /// dashboard widgets to render for devices of this type, and in what
+  /// order — see apps/web/src/widgets/. Null/empty falls back to the
+  /// original one-line-chart-per-metric behavior. `type` is one of
+  /// "line-chart" | "gauge" | "stat-tile" | "alarm-table"; metricKey is
+  /// required for all but "alarm-table", which is bound to the device
+  /// itself, not a metric.
+  defaultWidgets Json?    @map("default_widgets")
+  devices        Device[]
+  rules          Rule[]
+  createdAt      DateTime @default(now()) @map("created_at")
 
   // Self-service device provisioning (see CLAUDE.md's "Self-service device
   // provisioning" section) — lets a device create its own Device row + get
