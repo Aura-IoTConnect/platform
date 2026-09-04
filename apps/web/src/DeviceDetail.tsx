@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import type { Device } from './types'
+import { WidgetRenderer } from './widgets/WidgetRenderer'
 
 interface Reading {
   id: string
@@ -181,6 +182,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
 
       {loading ? (
         <p>Loading…</p>
+      ) : device.deviceType.defaultWidgets && device.deviceType.defaultWidgets.length > 0 ? (
+        <WidgetRenderer device={device} widgets={device.deviceType.defaultWidgets} readingsByMetric={byMetric} />
       ) : byMetric.size === 0 ? (
         <p className="hint">No telemetry yet for this device.</p>
       ) : (

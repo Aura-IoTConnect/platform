@@ -6,6 +6,16 @@ export interface Vertical {
   deviceTypes: DeviceType[]
 }
 
+export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table'
+
+export interface WidgetDef {
+  type: WidgetType
+  // Required for every type except 'alarm-table', which is bound to the
+  // device itself rather than one of its metrics.
+  metricKey?: string
+  label?: string
+}
+
 export interface DeviceType {
   id: string
   verticalId: string
@@ -18,6 +28,10 @@ export interface DeviceType {
   // CLAUDE.md) — null until an operator generates one. Never the secret
   // itself, which is only ever shown once, at generation time.
   provisionKey: string | null
+  // Which widgets to render for this device type's detail view, and in what
+  // order (see src/widgets/) — null/empty falls back to one line chart per
+  // metric (DeviceDetail.tsx).
+  defaultWidgets: WidgetDef[] | null
 }
 
 export interface Device {

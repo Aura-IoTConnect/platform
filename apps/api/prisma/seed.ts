@@ -21,6 +21,12 @@ interface RuleDef {
   actionConfig?: Record<string, unknown>;
 }
 
+interface WidgetDef {
+  type: "line-chart" | "gauge" | "stat-tile" | "alarm-table";
+  metricKey?: string;
+  label?: string;
+}
+
 interface DeviceTypeDef {
   key: string;
   name: string;
@@ -28,6 +34,10 @@ interface DeviceTypeDef {
   metrics: MetricDef[];
   rules: RuleDef[];
   sampleDevices: { name: string; location: string }[];
+  // Optional — which dashboard widgets to render for this device type, and
+  // in what order (see apps/web/src/widgets/). Omitted device types fall
+  // back to one line chart per metric.
+  defaultWidgets?: WidgetDef[];
 }
 
 interface VerticalDef {
@@ -71,6 +81,12 @@ const verticals: VerticalDef[] = [
           },
         ],
         sampleDevices: [{ name: "Dryer Unit A", location: "Mill Site 1" }],
+        defaultWidgets: [
+          { type: "gauge", metricKey: "grain_moisture" },
+          { type: "stat-tile", metricKey: "air_temp" },
+          { type: "line-chart", metricKey: "air_temp" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -108,6 +124,12 @@ const verticals: VerticalDef[] = [
           },
         ],
         sampleDevices: [{ name: "Station North Field", location: "Farm Perimeter N" }],
+        defaultWidgets: [
+          { type: "gauge", metricKey: "wind_speed" },
+          { type: "stat-tile", metricKey: "temperature" },
+          { type: "line-chart", metricKey: "rainfall" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -145,6 +167,12 @@ const verticals: VerticalDef[] = [
           },
         ],
         sampleDevices: [{ name: "Chiller Bay 3", location: "Distribution Center West" }],
+        defaultWidgets: [
+          { type: "gauge", metricKey: "temperature" },
+          { type: "stat-tile", metricKey: "humidity" },
+          { type: "line-chart", metricKey: "temperature" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -593,6 +621,7 @@ async function main() {
           name: deviceType.name,
           description: deviceType.description,
           metrics: deviceType.metrics,
+          defaultWidgets: deviceType.defaultWidgets,
         },
         create: {
           verticalId: createdVertical.id,
@@ -600,6 +629,7 @@ async function main() {
           name: deviceType.name,
           description: deviceType.description,
           metrics: deviceType.metrics,
+          defaultWidgets: deviceType.defaultWidgets,
         },
       });
 
