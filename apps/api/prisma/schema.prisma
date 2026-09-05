@@ -27,6 +27,7 @@ model User {
   passwordHash String   @map("password_hash")
   role         UserRole @default(OPERATOR)
   createdAt    DateTime @default(now()) @map("created_at")
+  watchlist    WatchlistItem[]
 
   @@map("users")
 }
@@ -117,6 +118,7 @@ model Device {
   telemetry        TelemetryReading[]
   alerts           Alert[]
   actuatorCommands ActuatorCommand[]
+  watchlistItems   WatchlistItem[]
   createdAt        DateTime           @default(now()) @map("created_at")
 
   @@map("devices")
@@ -285,4 +287,23 @@ model ActuatorCommand {
 
   @@index([deviceId, createdAt])
   @@map("actuator_commands")
+}
+
+/// One pinned (device, metric) pair on a user's personal watchlist — an
+/// operator-assembled, cross-device view (any device, any type), as opposed
+/// to DeviceType.defaultWidgets, which is an admin-authored per-type
+/// template. See CLAUDE.md's "Watchlist" section.
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String   @map("device_id")
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  metricKey String   @map("metric_key")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, deviceId, metricKey])
+  @@index([userId, sortOrder])
+  @@map("watchlist_items")
 }

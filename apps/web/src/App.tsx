@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import { AgentRunsTab } from './AgentRunsTab'
 import { AlertsTab } from './AlertsTab'
+import { WatchlistTab } from './WatchlistTab'
 import { useAuth } from './auth'
 import { DevicesTab } from './DevicesTab'
 import { Login } from './Login'
 
-const TABS = ['Devices', 'Alerts', 'Agent Runs'] as const
+const TABS = ['Devices', 'Alerts', 'Agent Runs', 'Watchlist'] as const
 type Tab = (typeof TABS)[number]
 
 function App() {
@@ -51,6 +52,7 @@ function App() {
       {tab === 'Devices' && <DevicesTab />}
       {tab === 'Alerts' && <AlertsTab />}
       {tab === 'Agent Runs' && <AgentRunsTab />}
+      {tab === 'Watchlist' && <WatchlistTab />}
     </main>
   )
 }
