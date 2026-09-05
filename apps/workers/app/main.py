@@ -12,6 +12,7 @@ from app.actuator_routes import router as actuator_router
 from app.agents_routes import router as agents_router
 from app.device_mqtt_routes import router as device_mqtt_router
 from app.ingestion import router as ingestion_router
+from app.metrics import metrics_endpoint
 from app.mqtt_client import mqtt_bridge
 from app.mqtt_dynsec import DynsecUnavailable, ensure_bootstrap
 from app.provisioning_routes import router as provisioning_router
@@ -43,6 +44,9 @@ app.include_router(agents_router)
 app.include_router(actuator_router)
 app.include_router(device_mqtt_router)
 app.include_router(provisioning_router)
+# Prometheus exposition for this service (see app/metrics.py). Left open like
+# /health — ops data, no device or user data.
+app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
 
 
 @app.get("/health")
