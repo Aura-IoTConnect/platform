@@ -151,6 +151,11 @@ enum RuleOperator {
   LT
   LTE
   EQ
+  /// "Device silence" — not a per-reading comparison against `value` like
+  /// the rest; checked periodically instead (see
+  /// apps/workers/app/silence_monitor.py). `threshold` is minutes of
+  /// silence on `metric` before this fires.
+  SILENT_FOR
 
   @@map("rule_operator")
 }

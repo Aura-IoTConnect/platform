@@ -164,6 +164,18 @@ const verticals: VerticalDef[] = [
             actionType: "webhook",
             actionConfig: { url: "https://example.org/hooks/weather-alert" },
           },
+          {
+            // Working example of the device-silence trigger (see
+            // apps/workers/app/silence_monitor.py): a station that's gone
+            // quiet for 30+ minutes is itself worth an alert, distinct from
+            // any threshold on the values it happens to be reporting.
+            name: "Station reporting no data",
+            metric: "wind_speed",
+            operator: "SILENT_FOR",
+            threshold: 30,
+            severity: "WARNING",
+            actionType: "notify",
+          },
         ],
         sampleDevices: [{ name: "Station North Field", location: "Farm Perimeter N" }],
         defaultWidgets: [

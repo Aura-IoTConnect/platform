@@ -39,12 +39,40 @@ async def evaluate(conn: AsyncConnection, device_id: str, metric: str, value: fl
 
     device_type_id = device_row.device_type_id
 
+    # A reading just arrived, so this device is no longer "silent" on this
+    # metric — auto-clear any open device-silence alert (see
+    # app/silence_monitor.py). Separate from the threshold OPERATORS loop
+    # below since SILENT_FOR rules are checked periodically, not per-reading.
+    silent_rule_ids = [
+        r.id
+        for r in (
+            await conn.execute(
+                select(rules.c.id).where(
+                    rules.c.device_type_id == device_type_id,
+                    rules.c.metric == metric,
+                    rules.c.operator == "SILENT_FOR",
+                )
+            )
+        ).all()
+    ]
+    if silent_rule_ids:
+        await conn.execute(
+            alerts.update()
+            .where(
+                alerts.c.device_id == device_id,
+                alerts.c.rule_id.in_(silent_rule_ids),
+                alerts.c.status.in_(("OPEN", "ACKNOWLEDGED")),
+            )
+            .values(status="RESOLVED", resolved_at=datetime.now(timezone.utc))
+        )
+
     matching_rules = (
         await conn.execute(
             select(rules).where(
                 rules.c.device_type_id == device_type_id,
                 rules.c.metric == metric,
                 rules.c.enabled.is_(True),
+                rules.c.operator != "SILENT_FOR",  # periodic, not per-reading — see app/silence_monitor.py
             )
         )
     ).mappings().all()
