@@ -225,6 +225,13 @@
   font-size: 0.85rem;
 }
 
+.rules-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
 .actuator-panel {
   display: flex;
   flex-direction: column;

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { callWorkers } from "../workersClient.js";
 
 const createRuleSchema = z.object({
   deviceTypeId: z.string().min(1),
@@ -16,6 +17,14 @@ const createRuleSchema = z.object({
 
 const updateRuleSchema = z.object({
   enabled: z.boolean(),
+});
+
+const backtestSchema = z.object({
+  deviceTypeId: z.string().min(1),
+  metric: z.string().min(1),
+  operator: z.enum(["GT", "GTE", "LT", "LTE", "EQ"]),
+  threshold: z.number(),
+  sinceHours: z.number().int().min(1).max(24 * 365).optional(),
 });
 
 export const rulesRouter = Router();
@@ -63,4 +72,23 @@ rulesRouter.patch("/:id", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Rule not found" });
   }
+});
+
+// Dry-run a candidate rule against stored telemetry — read-only, no Alert
+// or dispatch side effects. Proxies to apps/workers (which owns the rule
+// engine's operator logic) the same way agent triggers do; see CLAUDE.md.
+rulesRouter.post("/backtest", async (req, res) => {
+  const parsed = backtestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { status, data } = await callWorkers("/rules/backtest", {
+    device_type_id: parsed.data.deviceTypeId,
+    metric: parsed.data.metric,
+    operator: parsed.data.operator,
+    threshold: parsed.data.threshold,
+    since_hours: parsed.data.sinceHours ?? 168,
+  });
+  res.status(status).json(data);
 });

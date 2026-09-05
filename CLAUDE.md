@@ -232,6 +232,23 @@ labels. Nothing scrapes these yet — a Prometheus server + Grafana in
 reason for it, not before (mined from Prometheus/Grafana's pull model;
 endpoints first, infra later).
 
+### Rule backtest (dry-run before enabling)
+
+`POST /api/rules/backtest` (`src/routes/rules.ts`, JWT-protected) proxies
+to `apps/workers`' `POST /rules/backtest` (`app/backtest_routes.py` +
+`backtest_service.py`, behind `require_workers_token` — same boundary as
+agent triggers) with `{deviceTypeId, metric, operator, threshold,
+sinceHours?}`. It replays that candidate condition over the stored
+`TelemetryReading` rows of every device of that type in the window, using
+`rule_engine.OPERATORS` verbatim, and reports `breachingReadings` plus an
+`estimatedEpisodes` count that mirrors the live alert lifecycle per device
+(a breach opens an episode, it closes on the first non-breaching reading).
+Read-only: no `Alert`/`ActuatorCommand` rows, no notify/webhook dispatch,
+no cooldown consumed. The device detail view lists the type's rules with a
+"Backtest 7d" button each (`DeviceDetail.tsx`). Mined from the
+validate-before-deploy idea behind OpenModelica/OMSimulator co-simulation,
+scaled to one flat condition row replayed over stored data.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered

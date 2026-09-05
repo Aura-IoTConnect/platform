@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
-import type { Device } from './types'
+import type { BacktestResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
 interface Reading {
@@ -36,6 +36,9 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   const [rotating, setRotating] = useState(false)
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
+  const [rules, setRules] = useState<Rule[]>([])
+  const [backtests, setBacktests] = useState<Record<string, BacktestResult | 'loading' | 'error'>>({})
+
   const [commands, setCommands] = useState<ActuatorCommand[]>([])
   const [commandName, setCommandName] = useState('')
   const [commandValue, setCommandValue] = useState('')
@@ -54,8 +57,29 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       .then(setReadings)
       .finally(() => setLoading(false))
     loadCommands()
+    apiGet<Rule[]>(`/api/rules?deviceTypeId=${device.deviceType.id}`)
+      .then(setRules)
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id])
+
+  // Dry-run a rule against the last 7 days of stored telemetry for this
+  // device type — read-only, no alerts/dispatch (see CLAUDE.md, Rule backtest).
+  const backtest = async (rule: Rule) => {
+    setBacktests((b) => ({ ...b, [rule.id]: 'loading' }))
+    try {
+      const result = await apiSend<BacktestResult>('/api/rules/backtest', 'POST', {
+        deviceTypeId: rule.deviceTypeId,
+        metric: rule.metric,
+        operator: rule.operator,
+        threshold: rule.threshold,
+        sinceHours: 168,
+      })
+      setBacktests((b) => ({ ...b, [rule.id]: result }))
+    } catch {
+      setBacktests((b) => ({ ...b, [rule.id]: 'error' }))
+    }
+  }
 
   const byMetric = new Map<string, Reading[]>()
   for (const r of readings) {
@@ -136,6 +160,45 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
           <button type="button" onClick={() => setNewApiKey(null)}>
             Dismiss
           </button>
+        </div>
+      )}
+
+      {rules.length > 0 && (
+        <div className="rules-panel">
+          <span className="widget-label">Rules for {device.deviceType.name}</span>
+          <ul className="record-list">
+            {rules.map((rule) => {
+              const bt = backtests[rule.id]
+              return (
+                <li key={rule.id}>
+                  <div className="record-main">
+                    <span className="record-title">
+                      {rule.name}
+                      {!rule.enabled && <span className="status-pill">disabled</span>}
+                    </span>
+                    <span className="record-subtitle">
+                      {rule.metric} {rule.operator} {rule.threshold} · {rule.severity} · {rule.actionType}
+                      {bt && bt !== 'loading' && bt !== 'error' && (
+                        <>
+                          {' '}
+                          · would have fired <strong>{bt.estimatedEpisodes}</strong> time
+                          {bt.estimatedEpisodes === 1 ? '' : 's'} across {bt.devicesEvaluated} device
+                          {bt.devicesEvaluated === 1 ? '' : 's'} in the last 7 days ({bt.breachingReadings}/
+                          {bt.readingsEvaluated} readings breached)
+                        </>
+                      )}
+                      {bt === 'error' && ' · backtest failed — is apps/workers running?'}
+                    </span>
+                  </div>
+                  <div className="record-actions">
+                    <button type="button" onClick={() => backtest(rule)} disabled={bt === 'loading'}>
+                      {bt === 'loading' ? 'Testing…' : 'Backtest 7d'}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
 
