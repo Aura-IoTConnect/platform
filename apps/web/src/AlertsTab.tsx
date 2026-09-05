@@ -1,6 +1,34 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import type { Alert } from './types'
+
+const POLL_MS = 15_000
+
+// Short two-tone beep via WebAudio — no asset to ship. Browsers gate audio
+// behind a prior user gesture; if none has happened yet this silently
+// no-ops and the flashing banner still does its job.
+function beep() {
+  try {
+    const ctx = new AudioContext()
+    const play = (freq: number, at: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'square'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at)
+      gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + at + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + 0.25)
+      osc.connect(gain).connect(ctx.destination)
+      osc.start(ctx.currentTime + at)
+      osc.stop(ctx.currentTime + at + 0.3)
+    }
+    play(880, 0)
+    play(660, 0.3)
+    setTimeout(() => ctx.close().catch(() => {}), 1000)
+  } catch {
+    /* autoplay blocked or no AudioContext — banner only */
+  }
+}
 
 function agentErrorMessage(err: unknown): string {
   if (err instanceof ApiRequestError && err.status === 503) {
@@ -15,16 +43,40 @@ export function AlertsTab() {
   const [loading, setLoading] = useState(true)
   const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
   const [agentNotice, setAgentNotice] = useState<string | null>(null)
+  // New CRITICAL/OPEN alerts since the previous poll — the SCADA-style
+  // "alarm horn": a flashing banner plus a short beep until dismissed.
+  // See CLAUDE.md, Alerts tab.
+  const [newCritical, setNewCritical] = useState<Alert[]>([])
+  const seenCriticalIds = useRef<Set<string> | null>(null)
 
-  const load = () => {
-    setLoading(true)
+  const load = (background = false) => {
+    if (!background) setLoading(true)
     apiGet<Alert[]>('/api/alerts')
-      .then(setAlerts)
+      .then((list) => {
+        setAlerts(list)
+        const critical = list.filter((a) => a.severity === 'CRITICAL' && a.status === 'OPEN')
+        if (seenCriticalIds.current === null) {
+          // First load: baseline, don't alarm on history.
+          seenCriticalIds.current = new Set(critical.map((a) => a.id))
+        } else {
+          const fresh = critical.filter((a) => !seenCriticalIds.current!.has(a.id))
+          if (fresh.length > 0) {
+            fresh.forEach((a) => seenCriticalIds.current!.add(a.id))
+            setNewCritical((prev) => [...fresh, ...prev])
+            beep()
+          }
+        }
+      })
       .catch(() => setError('Failed to load alerts'))
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => {
+    load()
+    const timer = setInterval(() => load(true), POLL_MS)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const updateStatus = async (id: string, status: Alert['status']) => {
     try {
@@ -63,6 +115,26 @@ export function AlertsTab() {
 
   return (
     <section>
+      {newCritical.length > 0 && (
+        <div className="critical-banner" role="alert">
+          <div className="record-main">
+            <strong>
+              {newCritical.length} new critical alert{newCritical.length === 1 ? '' : 's'}
+            </strong>
+            {newCritical.map((a) => (
+              <span key={a.id} className="record-subtitle">
+                {a.device.name} — {a.message}
+              </span>
+            ))}
+          </div>
+          <div className="record-actions">
+            <button type="button" onClick={() => setNewCritical([])}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && <p className="error">{error}</p>}
 
       {alerts.some((a) => a.status === 'OPEN') && (

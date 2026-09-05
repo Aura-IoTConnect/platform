@@ -138,6 +138,28 @@
   margin-bottom: 1rem;
 }
 
+.critical-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  border: 2px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  animation: critical-flash 1s steps(2, jump-none) infinite;
+}
+
+@keyframes critical-flash {
+  from {
+    border-color: var(--danger);
+  }
+  to {
+    border-color: transparent;
+  }
+}
+
 .api-key-banner {
   display: flex;
   flex-wrap: wrap;
@@ -289,8 +311,16 @@
 }
 
 .line-chart-widget,
-.alarm-table-widget {
+.alarm-table-widget,
+.svg-mimic-widget {
   grid-column: 1 / -1;
+}
+
+.svg-mimic svg {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  height: auto;
 }
 
 .gauge-widget {

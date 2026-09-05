@@ -3,6 +3,7 @@ import { AlarmTableWidget } from './AlarmTableWidget'
 import { GaugeWidget } from './GaugeWidget'
 import { LineChartWidget } from './LineChartWidget'
 import { StatTile } from './StatTile'
+import { SvgMimicWidget } from './SvgMimicWidget'
 
 interface Reading {
   value: number
@@ -25,6 +26,27 @@ export function WidgetRenderer({
       {widgets.map((widget, i) => {
         if (widget.type === 'alarm-table') {
           return <AlarmTableWidget key={i} deviceId={device.id} />
+        }
+        if (widget.type === 'svg-mimic') {
+          if (!widget.svg || !widget.bindings) return null
+          const latestByMetric = new Map<string, number>()
+          for (const [metric, points] of readingsByMetric) {
+            const last = points[points.length - 1]
+            if (last) latestByMetric.set(metric, last.value)
+          }
+          const bindings = widget.bindings.map((b) => ({
+            ...b,
+            unit: b.unit ?? device.deviceType.metrics.find((m) => m.key === b.metricKey)?.unit,
+          }))
+          return (
+            <SvgMimicWidget
+              key={i}
+              label={widget.label ?? 'Mimic'}
+              svg={widget.svg}
+              bindings={bindings}
+              latestByMetric={latestByMetric}
+            />
+          )
         }
 
         const metricKey = widget.metricKey

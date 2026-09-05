@@ -6,14 +6,23 @@ export interface Vertical {
   deviceTypes: DeviceType[]
 }
 
-export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table'
+export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table' | 'svg-mimic'
 
 export interface WidgetDef {
   type: WidgetType
-  // Required for every type except 'alarm-table', which is bound to the
-  // device itself rather than one of its metrics.
+  // Required for every type except 'alarm-table' (bound to the device
+  // itself) and 'svg-mimic' (bound to many metrics via `bindings`).
   metricKey?: string
   label?: string
+  // 'svg-mimic' only — see widgets/SvgMimicWidget.tsx
+  svg?: string
+  bindings?: {
+    elementId: string
+    metricKey: string
+    mode: 'text' | 'fill' | 'visibility'
+    thresholds?: { upTo?: number; color: string }[]
+    unit?: string
+  }[]
 }
 
 export interface DeviceType {
