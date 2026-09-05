@@ -27,6 +27,7 @@ from typing import Optional
 
 import paho.mqtt.client as mqtt
 
+from app.metrics import mqtt_bridge_connected
 from app.telemetry_service import ingest_reading
 
 logger = logging.getLogger("mqtt")
@@ -46,6 +47,7 @@ class MqttBridge:
 
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         client.on_connect = self._on_connect
+        client.on_disconnect = self._on_disconnect
         client.on_message = self._on_message
 
         username = os.environ.get("MQTT_USERNAME")
@@ -80,8 +82,16 @@ class MqttBridge:
             # connect() itself only raises on network-level failures — a
             # rejected CONNACK (e.g. bad credentials) only surfaces here.
             logger.warning("MQTT connect rejected by broker: %s — MQTT ingestion disabled", reason_code)
+            mqtt_bridge_connected.set(0)
             return
+        mqtt_bridge_connected.set(1)
         client.subscribe(TOPIC_PATTERN)
+
+    def _on_disconnect(self, _client: mqtt.Client, _userdata, _flags, reason_code, _properties=None) -> None:
+        # paho reconnects on its own (loop_start); the gauge just makes the
+        # gap visible instead of only a log line.
+        mqtt_bridge_connected.set(0)
+        logger.warning("MQTT bridge disconnected: %s", reason_code)
 
     def _on_message(self, _client: mqtt.Client, _userdata, msg) -> None:
         parts = msg.topic.split("/")
@@ -100,7 +110,9 @@ class MqttBridge:
 
         if self._loop is None:
             return
-        asyncio.run_coroutine_threadsafe(ingest_reading(device_id, metric, value, unit=unit), self._loop)
+        asyncio.run_coroutine_threadsafe(
+            ingest_reading(device_id, metric, value, unit=unit, transport="mqtt"), self._loop
+        )
 
 
 mqtt_bridge = MqttBridge()
