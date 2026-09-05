@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
-import type { BacktestResult, Device, Rule } from './types'
+import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
 interface Reading {
@@ -44,6 +44,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   const [commandValue, setCommandValue] = useState('')
   const [sending, setSending] = useState(false)
   const [actuatorError, setActuatorError] = useState<string | null>(null)
+  const [sendingAll, setSendingAll] = useState(false)
+  const [bulkResult, setBulkResult] = useState<BulkActuatorResult | null>(null)
 
   const loadCommands = () => {
     apiGet<ActuatorCommand[]>(`/api/actuator-commands?deviceId=${device.id}&limit=10`)
@@ -134,6 +136,27 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
     }
   }
 
+  // Same command/value inputs, fanned out to every device of this type via
+  // POST /api/device-types/:id/actuator — see CLAUDE.md, Actuator control.
+  const sendToAll = async () => {
+    if (!commandName.trim()) return
+    setActuatorError(null)
+    setBulkResult(null)
+    setSendingAll(true)
+    try {
+      const result = await apiSend<BulkActuatorResult>(`/api/device-types/${device.deviceType.id}/actuator`, 'POST', {
+        command: commandName,
+        value: commandValue || undefined,
+      })
+      setBulkResult(result)
+      loadCommands()
+    } catch {
+      setActuatorError('Failed to send command to all devices — is apps/workers running?')
+    } finally {
+      setSendingAll(false)
+    }
+  }
+
   return (
     <div className="device-detail">
       <div className="device-detail-header">
@@ -216,12 +239,34 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
             onChange={(e) => setCommandValue(e.target.value)}
             placeholder="Value (optional)"
           />
-          <button type="submit" disabled={sending}>
+          <button type="submit" disabled={sending || sendingAll}>
             {sending ? 'Sending…' : 'Send command'}
+          </button>
+          <button type="button" onClick={sendToAll} disabled={sending || sendingAll}>
+            {sendingAll ? 'Sending…' : `Send to all ${device.deviceType.name}s`}
           </button>
         </form>
 
         {actuatorError && <p className="error">{actuatorError}</p>}
+
+        {bulkResult && (
+          <div className="bulk-result">
+            <span className="widget-label">
+              <code>{bulkResult.command}</code> → {bulkResult.dispatched} dispatched
+              {bulkResult.failed > 0 ? `, ${bulkResult.failed} failed` : ''}
+            </span>
+            <ul className="record-list">
+              {bulkResult.results.map((r) => (
+                <li key={r.deviceId}>
+                  <span className="record-title">{r.deviceName}</span>
+                  <span className={`status-pill status-${r.ok ? 'online' : 'failed'}`}>
+                    {r.ok ? 'sent' : `failed (${r.status})`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {commands.length > 0 && (
           <ul className="record-list">

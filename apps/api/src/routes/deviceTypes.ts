@@ -1,6 +1,8 @@
 import { Router } from "express";
+import { z } from "zod";
 import { generateApiKey, hashApiKey } from "../apiKeys.js";
 import { prisma } from "../db.js";
+import { callWorkers } from "../workersClient.js";
 
 export const deviceTypesRouter = Router();
 
@@ -53,4 +55,47 @@ deviceTypesRouter.post("/:id/provisioning-secret", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Device type not found" });
   }
+});
+
+const actuatorCommandSchema = z.object({
+  command: z.string().min(1),
+  value: z.unknown().optional(),
+});
+
+// Fan one manual command out to every device of this type — the app-layer
+// analogue of a broker-level "channel" (see CLAUDE.md, Actuator control).
+// Each device still goes through the existing per-device workers endpoint,
+// so each dispatch writes its own ActuatorCommand row (source: MANUAL).
+// Always 200 with a per-device result list: a partial failure (one
+// device's workers call 502s) must not read as either full success or
+// full failure.
+deviceTypesRouter.post("/:id/actuator", async (req, res) => {
+  const parsed = actuatorCommandSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const deviceType = await prisma.deviceType.findUnique({ where: { id: req.params.id } });
+  if (!deviceType) {
+    res.status(404).json({ error: "Device type not found" });
+    return;
+  }
+
+  const targets = await prisma.device.findMany({
+    where: { deviceTypeId: deviceType.id },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  const results = [];
+  for (const device of targets) {
+    const { status, data } = await callWorkers(`/devices/${device.id}/actuator`, parsed.data);
+    results.push({ deviceId: device.id, deviceName: device.name, ok: status >= 200 && status < 300, status, data });
+  }
+  res.json({
+    deviceTypeId: deviceType.id,
+    command: parsed.data.command,
+    dispatched: results.filter((r) => r.ok).length,
+    failed: results.filter((r) => !r.ok).length,
+    results,
+  });
 });
