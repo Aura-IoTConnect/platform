@@ -47,6 +47,12 @@ export class ApiRequestError extends Error {
 // than calling apps/workers directly from the browser — keeps them behind
 // the same JWT auth as everything else, and keeps apps/workers'
 // WORKERS_API_TOKEN server-side only. See CLAUDE.md.
+export async function apiDelete(path: string): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, { method: 'DELETE', headers: authHeaders() })
+  handleResponse(res)
+  if (!res.ok) throw new Error(`DELETE ${path} failed`)
+}
+
 export async function apiSendAgent<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',

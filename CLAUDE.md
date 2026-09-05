@@ -361,6 +361,20 @@ already-fetched telemetry, grouped by metric. Three seeded device types
 as a working example — adding it to more is a seed-data change, not a code
 change, same as adding a vertical.
 
+### Watchlist (`apps/web/src/WatchlistTab.tsx`, `/api/watchlist`)
+
+A user's own, freely-mixed list of pinned `(device, metric)` pairs from
+anywhere in the fleet — the fourth dashboard tab. Distinct from
+`DeviceType.defaultWidgets` (an admin-authored template that applies to
+every device of one type and only that device's own metrics): a watchlist
+is per-user (`WatchlistItem.userId`, every route scoped to `req.user.id`,
+a cross-user delete is a plain `404`), cross-device, and assembled at
+runtime. `POST /api/watchlist` validates the metric against the device's
+type taxonomy and returns `409` on a duplicate pin. Each card reuses
+`StatTile` + `LineChartWidget` from the widget library over the device's
+telemetry. `apps/workers` mirrors the table in `db.py` but never touches
+it. Mined from ScadaBR's Watch List.
+
 ## Commands
 
 ```bash

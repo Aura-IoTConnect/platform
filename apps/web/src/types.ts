@@ -119,3 +119,12 @@ export interface BulkActuatorResult {
   failed: number
   results: { deviceId: string; deviceName: string; ok: boolean; status: number; data: unknown }[]
 }
+
+export interface WatchlistItem {
+  id: string
+  deviceId: string
+  metricKey: string
+  sortOrder: number
+  createdAt: string
+  device: Device
+}

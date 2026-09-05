@@ -11,6 +11,7 @@ import { devicesRouter } from "./routes/devices.js";
 import { rulesRouter } from "./routes/rules.js";
 import { telemetryRouter } from "./routes/telemetry.js";
 import { verticalsRouter } from "./routes/verticals.js";
+import { watchlistRouter } from "./routes/watchlist.js";
 
 export const app = express();
 
@@ -42,3 +43,4 @@ app.use("/api/actuator-commands", actuatorCommandsRouter);
 app.use("/api/rules", rulesRouter);
 app.use("/api/alerts", alertsRouter);
 app.use("/api/agents", agentsRouter);
+app.use("/api/watchlist", watchlistRouter);
