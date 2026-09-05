@@ -82,3 +82,32 @@ export interface AgentRun {
   alert: Alert | null
   feedback: { score: number; comment: string | null } | null
 }
+
+export interface Rule {
+  id: string
+  deviceTypeId: string
+  name: string
+  metric: string
+  operator: 'GT' | 'GTE' | 'LT' | 'LTE' | 'EQ'
+  threshold: number
+  severity: 'INFO' | 'WARNING' | 'CRITICAL'
+  actionType: 'notify' | 'webhook' | 'actuator'
+  enabled: boolean
+}
+
+export interface BacktestResult {
+  sinceHours: number
+  devicesEvaluated: number
+  readingsEvaluated: number
+  breachingReadings: number
+  estimatedEpisodes: number
+  byDevice: {
+    deviceId: string
+    deviceName: string
+    readings: number
+    breaching: number
+    episodes: number
+    firstBreachAt: string | null
+    lastBreachAt: string | null
+  }[]
+}
