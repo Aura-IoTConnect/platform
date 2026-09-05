@@ -277,6 +277,17 @@ device link. Two sources write it, both through
   (`app/actuator_routes.py`) the same way agent triggers do — see Auth
   above. `GET /api/actuator-commands?deviceId=` (`apps/api`) reads the
   history straight from Postgres, no workers round-trip needed.
+- **Bulk, by device type** — `POST /api/device-types/:id/actuator`
+  (`src/routes/deviceTypes.ts`) fans the same `{command, value}` out to
+  every device of that type by looping the per-device workers call, so
+  each still writes its own `ActuatorCommand` (`source: MANUAL`). Always
+  `200` with a per-device `results` list plus `dispatched`/`failed`
+  counts — a partial failure (one device's workers call 502s) must read as
+  neither full success nor full failure. The "Send to all <type>s" button
+  in `DeviceDetail.tsx` uses it. App-layer analogue of a broker-level
+  multi-device "channel" (mined from Magistrala's Channel model); our
+  `telemetry/<device_id>/<metric>` topic convention is inherently
+  one-device-per-topic, so this lives in the API, not the broker.
 
 `callWorkers` (`apps/api/src/workersClient.ts`) catches network-level
 failures (workers unreachable) and returns a normal `502`, not a rejected

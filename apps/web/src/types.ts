@@ -111,3 +111,11 @@ export interface BacktestResult {
     lastBreachAt: string | null
   }[]
 }
+
+export interface BulkActuatorResult {
+  deviceTypeId: string
+  command: string
+  dispatched: number
+  failed: number
+  results: { deviceId: string; deviceName: string; ok: boolean; status: number; data: unknown }[]
+}

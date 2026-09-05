@@ -240,6 +240,12 @@
   border-bottom: 1px solid var(--border);
 }
 
+.bulk-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
 .actuator-panel .device-form {
   margin: 0;
 }

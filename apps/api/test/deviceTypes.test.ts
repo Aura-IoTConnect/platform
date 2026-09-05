@@ -87,3 +87,64 @@ describe("device type provisioning", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("POST /api/device-types/:id/actuator (bulk dispatch)", () => {
+  let token: string;
+  let deviceTypeId: string;
+  let deviceCount: number;
+
+  beforeAll(async () => {
+    const user = await prisma.user.upsert({
+      where: { email: "vitest-bulk-actuator@iotplatform.local" },
+      update: {},
+      create: {
+        email: "vitest-bulk-actuator@iotplatform.local",
+        passwordHash: await hashPassword("irrelevant"),
+        role: "OPERATOR",
+      },
+    });
+    token = signToken({ id: user.id, email: user.email, role: user.role });
+    const device = await prisma.device.findFirstOrThrow();
+    deviceTypeId = device.deviceTypeId;
+    deviceCount = await prisma.device.count({ where: { deviceTypeId } });
+  });
+
+  afterAll(async () => {
+    await prisma.user.delete({ where: { email: "vitest-bulk-actuator@iotplatform.local" } });
+    await prisma.$disconnect();
+  });
+
+  it("requires a bearer token", async () => {
+    const res = await request(app).post(`/api/device-types/${deviceTypeId}/actuator`).send({ command: "x" });
+    expect(res.status).toBe(401);
+  });
+
+  it("validates the body", async () => {
+    const res = await request(app)
+      .post(`/api/device-types/${deviceTypeId}/actuator`)
+      .set("authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("404s for an unknown device type", async () => {
+    const res = await request(app)
+      .post("/api/device-types/does-not-exist/actuator")
+      .set("authorization", `Bearer ${token}`)
+      .send({ command: "x" });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns one result per device of the type, and never fails the whole call on a per-device error", async () => {
+    // CI doesn't run apps/workers, so every per-device dispatch 502s there —
+    // the response must still be a 200 with the failures itemised.
+    const res = await request(app)
+      .post(`/api/device-types/${deviceTypeId}/actuator`)
+      .set("authorization", `Bearer ${token}`)
+      .send({ command: "vitest_bulk" });
+    expect(res.status).toBe(200);
+    expect(res.body.results).toHaveLength(deviceCount);
+    expect(res.body.dispatched + res.body.failed).toBe(deviceCount);
+    for (const r of res.body.results) expect(typeof r.ok).toBe("boolean");
+  });
+});
