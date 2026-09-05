@@ -55,6 +55,12 @@ model DeviceType {
   name           String
   description    String
   /// Array of { key, label, unit, min?, max? } describing expected metrics.
+  /// Each entry may also carry an ingest-time policy, applied by
+  /// apps/workers/app/metric_pipeline.py before a reading is persisted or
+  /// rule-evaluated: transform?: {type:"linear", factor, offset};
+  /// onOutOfRange?: "pass"|"clamp"|"reject" (vs min/max, default pass);
+  /// loggingMode?: "always"|"on-change" + deadband?: number (thins stored
+  /// history only — rules still see every reading). See CLAUDE.md.
   metrics        Json
   /// Optional array of { type, metricKey?, label? } declaring which
   /// dashboard widgets to render for devices of this type, and in what

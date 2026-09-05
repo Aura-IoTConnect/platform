@@ -22,7 +22,19 @@ export interface DeviceType {
   key: string
   name: string
   description: string
-  metrics: { key: string; label: string; unit: string; min?: number; max?: number }[]
+  metrics: {
+    key: string
+    label: string
+    unit: string
+    min?: number
+    max?: number
+    // Ingest-time policy, applied by apps/workers before persist/rule
+    // evaluation — see CLAUDE.md's "Ingest-time metric pipeline".
+    transform?: { type: 'linear'; factor?: number; offset?: number }
+    onOutOfRange?: 'pass' | 'clamp' | 'reject'
+    loggingMode?: 'always' | 'on-change'
+    deadband?: number
+  }[]
   vertical?: Vertical
   // Public lookup identifier for self-service device provisioning (see
   // CLAUDE.md) — null until an operator generates one. Never the secret
