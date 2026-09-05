@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     MetaData,
+    PrimaryKeyConstraint,
     String,
     Table,
 )
@@ -87,15 +88,20 @@ verticals = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+# Composite PK (id, timestamp), not just id — this is a TimescaleDB
+# hypertable partitioned on timestamp, and create_hypertable requires the
+# partitioning column to be part of any unique/primary key constraint. See
+# CLAUDE.md's "Telemetry storage" section.
 telemetry_readings = Table(
     "telemetry_readings",
     metadata,
-    Column("id", String, primary_key=True),
+    Column("id", String),
     Column("device_id", String, ForeignKey("devices.id")),
     Column("metric", String),
     Column("value", Float),
     Column("unit", String),
     Column("timestamp", DateTime(timezone=True)),
+    PrimaryKeyConstraint("id", "timestamp"),
 )
 
 rules = Table(
