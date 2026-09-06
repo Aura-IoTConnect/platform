@@ -18,7 +18,9 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     MetaData,
+    PrimaryKeyConstraint,
     String,
     Table,
 )
@@ -31,11 +33,16 @@ metadata = MetaData()
 # create_type=False so SQLAlchemy never tries to (re)create them — Prisma
 # migrations own that.
 device_status_enum = ENUM("ONLINE", "OFFLINE", "MAINTENANCE", name="device_status", create_type=False, metadata=metadata)
-rule_operator_enum = ENUM("GT", "GTE", "LT", "LTE", "EQ", name="rule_operator", create_type=False, metadata=metadata)
+rule_operator_enum = ENUM(
+    "GT", "GTE", "LT", "LTE", "EQ", "SILENT_FOR", name="rule_operator", create_type=False, metadata=metadata
+)
 alert_severity_enum = ENUM("INFO", "WARNING", "CRITICAL", name="alert_severity", create_type=False, metadata=metadata)
 alert_status_enum = ENUM("OPEN", "ACKNOWLEDGED", "RESOLVED", name="alert_status", create_type=False, metadata=metadata)
 agent_run_status_enum = ENUM(
     "PENDING", "COMPLETED", "FAILED", name="agent_run_status", create_type=False, metadata=metadata
+)
+actuator_command_source_enum = ENUM(
+    "RULE", "MANUAL", name="actuator_command_source", create_type=False, metadata=metadata
 )
 
 
@@ -54,6 +61,7 @@ devices = Table(
     Column("location", String),
     Column("status", device_status_enum),
     Column("metadata", JSONB),
+    Column("api_key_hash", String),
     Column("created_at", DateTime(timezone=True)),
 )
 
@@ -67,6 +75,9 @@ device_types = Table(
     Column("description", String),
     Column("metrics", JSONB),
     Column("created_at", DateTime(timezone=True)),
+    Column("provision_key", String),
+    Column("provision_secret_hash", String),
+    Column("default_widgets", JSONB),
 )
 
 verticals = Table(
@@ -79,15 +90,20 @@ verticals = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+# Composite PK (id, timestamp), not just id — this is a TimescaleDB
+# hypertable partitioned on timestamp, and create_hypertable requires the
+# partitioning column to be part of any unique/primary key constraint. See
+# CLAUDE.md's "Telemetry storage" section.
 telemetry_readings = Table(
     "telemetry_readings",
     metadata,
-    Column("id", String, primary_key=True),
+    Column("id", String),
     Column("device_id", String, ForeignKey("devices.id")),
     Column("metric", String),
     Column("value", Float),
     Column("unit", String),
     Column("timestamp", DateTime(timezone=True)),
+    PrimaryKeyConstraint("id", "timestamp"),
 )
 
 rules = Table(
@@ -143,6 +159,32 @@ agent_runs = Table(
     Column("completed_at", DateTime(timezone=True)),
 )
 
+actuator_commands = Table(
+    "actuator_commands",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("rule_id", String, ForeignKey("rules.id")),
+    Column("command", String),
+    Column("value", JSONB),
+    Column("source", actuator_command_source_enum),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes watchlist rows today — they're a dashboard concern.
+watchlist_items = Table(
+    "watchlist_items",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("metric_key", String),
+    Column("sort_order", Integer),
+    Column("created_at", DateTime(timezone=True)),
+)
+
 
 def _asyncpg_url(url: str) -> str:
     if url.startswith("postgresql://"):
@@ -161,3 +203,14 @@ def get_engine() -> AsyncEngine:
         )
         _engine = create_async_engine(_asyncpg_url(database_url), pool_pre_ping=True)
     return _engine
+
+
+async def dispose_engine() -> None:
+    """asyncpg connections are bound to the event loop they were created on.
+    pytest-asyncio gives each test function a fresh loop by default, so tests
+    must dispose the (module-singleton) engine between tests — otherwise the
+    second test to touch it reuses pooled connections from a dead loop."""
+    global _engine
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend } from './api'
+import { DeviceDetail } from './DeviceDetail'
 import type { Device, Vertical } from './types'
 
 export function DevicesTab() {
@@ -10,6 +11,12 @@ export function DevicesTab() {
   const [location, setLocation] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [newApiKey, setNewApiKey] = useState<{ deviceName: string; apiKey: string } | null>(null)
+  const [newProvisioningSecret, setNewProvisioningSecret] = useState<{
+    provisionKey: string
+    provisionSecret: string
+  } | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -34,11 +41,12 @@ export function DevicesTab() {
 
     setError(null)
     try {
-      await apiSend('/api/devices', 'POST', {
+      const created = await apiSend<{ name: string; apiKey: string }>('/api/devices', 'POST', {
         name,
         deviceTypeId,
         location: location || undefined,
       })
+      setNewApiKey({ deviceName: created.name, apiKey: created.apiKey })
       setName('')
       setLocation('')
       load()
@@ -46,6 +54,27 @@ export function DevicesTab() {
       setError('Failed to create device')
     }
   }
+
+  const handleGenerateProvisioningSecret = async () => {
+    if (!deviceTypeId) return
+    setError(null)
+    try {
+      const secret = await apiSend<{ provisionKey: string; provisionSecret: string }>(
+        `/api/device-types/${deviceTypeId}/provisioning-secret`,
+        'POST',
+        undefined,
+      )
+      setNewProvisioningSecret(secret)
+      load()
+    } catch {
+      setError('Failed to generate provisioning secret')
+    }
+  }
+
+  const selectedDevice = devices.find((d) => d.id === selectedId) ?? null
+  const selectedDeviceType = verticals
+    .flatMap((v) => v.deviceTypes)
+    .find((dt) => dt.id === deviceTypeId)
 
   return (
     <section>
@@ -76,7 +105,57 @@ export function DevicesTab() {
         <button type="submit">Add device</button>
       </form>
 
+      {selectedDeviceType && (
+        <p className="hint">
+          {selectedDeviceType.provisionKey ? (
+            <>
+              Self-service provisioning is on for <strong>{selectedDeviceType.name}</strong> — devices of this type
+              can create themselves via <code>POST /ingestion/provision</code>.{' '}
+            </>
+          ) : (
+            <>
+              <strong>{selectedDeviceType.name}</strong> has no self-service provisioning credential yet.{' '}
+            </>
+          )}
+          <button type="button" onClick={handleGenerateProvisioningSecret} style={{ marginLeft: '0.4rem' }}>
+            {selectedDeviceType.provisionKey ? 'Rotate provisioning key' : 'Generate provisioning key'}
+          </button>
+        </p>
+      )}
+
       {error && <p className="error">{error}</p>}
+
+      {newApiKey && (
+        <div className="api-key-banner">
+          <p>
+            API key for <strong>{newApiKey.deviceName}</strong> — save it now, it won't be shown again:
+          </p>
+          <code>{newApiKey.apiKey}</code>
+          <button type="button" onClick={() => setNewApiKey(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {newProvisioningSecret && (
+        <div className="api-key-banner">
+          <p>
+            Provisioning credential — save it now, the secret won't be shown again. A device presents both to{' '}
+            <code>POST /ingestion/provision</code> to create itself:
+          </p>
+          <p>
+            provisionKey: <code>{newProvisioningSecret.provisionKey}</code>
+          </p>
+          <p>
+            provisionSecret: <code>{newProvisioningSecret.provisionSecret}</code>
+          </p>
+          <button type="button" onClick={() => setNewProvisioningSecret(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {selectedDevice && <DeviceDetail device={selectedDevice} onClose={() => setSelectedId(null)} />}
 
       {loading ? (
         <p>Loading…</p>
@@ -85,7 +164,7 @@ export function DevicesTab() {
       ) : (
         <ul className="record-list">
           {devices.map((device) => (
-            <li key={device.id}>
+            <li key={device.id} className="clickable" onClick={() => setSelectedId(device.id)}>
               <div className="record-main">
                 <span className="record-title">{device.name}</span>
                 <span className="record-subtitle">

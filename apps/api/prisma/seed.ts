@@ -1,4 +1,5 @@
 import { PrismaClient, type RuleOperator, type AlertSeverity } from "@prisma/client";
+import { hashPassword } from "../src/auth.js";
 
 const prisma = new PrismaClient();
 
@@ -8,6 +9,11 @@ interface MetricDef {
   unit: string;
   min?: number;
   max?: number;
+  // Optional ingest-time policy — see apps/workers/app/metric_pipeline.py.
+  transform?: { type: "linear"; factor?: number; offset?: number };
+  onOutOfRange?: "pass" | "clamp" | "reject";
+  loggingMode?: "always" | "on-change";
+  deadband?: number;
 }
 
 interface RuleDef {
@@ -20,6 +26,36 @@ interface RuleDef {
   actionConfig?: Record<string, unknown>;
 }
 
+interface WidgetDef {
+  type: "line-chart" | "gauge" | "stat-tile" | "alarm-table" | "svg-mimic";
+  metricKey?: string;
+  label?: string;
+  // "svg-mimic" only — see apps/web/src/widgets/SvgMimicWidget.tsx
+  svg?: string;
+  bindings?: {
+    elementId: string;
+    metricKey: string;
+    mode: "text" | "fill" | "visibility";
+    thresholds?: { upTo?: number; color: string }[];
+  }[];
+}
+
+// A minimal synoptic screen for the cold-storage unit: chamber body whose
+// fill tracks temperature, a live readout, and a door indicator that only
+// shows while door_open > 0. Authored by hand here; real deployments would
+// paste an Inkscape export. Everything is plain SVG — no scripts.
+const COLD_STORAGE_MIMIC = `<svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+  <rect id="chamber" x="20" y="20" width="180" height="80" rx="8" fill="#3b82f6" stroke="#94a3b8" stroke-width="2"/>
+  <text x="110" y="52" text-anchor="middle" fill="#fff" font-size="12">Chamber</text>
+  <text id="temp-readout" x="110" y="76" text-anchor="middle" fill="#fff" font-size="18" font-weight="600">—</text>
+  <rect x="200" y="30" width="10" height="60" fill="#94a3b8"/>
+  <g id="door-open" visibility="hidden">
+    <rect x="210" y="30" width="10" height="60" fill="#f59e0b" transform="rotate(-25 210 30)"/>
+    <text x="250" y="66" fill="#f59e0b" font-size="12">DOOR OPEN</text>
+  </g>
+  <text id="humidity-readout" x="250" y="100" fill="#94a3b8" font-size="11">—</text>
+</svg>`;
+
 interface DeviceTypeDef {
   key: string;
   name: string;
@@ -27,6 +63,10 @@ interface DeviceTypeDef {
   metrics: MetricDef[];
   rules: RuleDef[];
   sampleDevices: { name: string; location: string }[];
+  // Optional — which dashboard widgets to render for this device type, and
+  // in what order (see apps/web/src/widgets/). Omitted device types fall
+  // back to one line chart per metric.
+  defaultWidgets?: WidgetDef[];
 }
 
 interface VerticalDef {
@@ -47,7 +87,20 @@ const verticals: VerticalDef[] = [
         name: "Grain Dryer",
         description: "Monitors grain moisture and drying airflow temperature.",
         metrics: [
-          { key: "grain_moisture", label: "Grain Moisture", unit: "%", min: 0, max: 100 },
+          // Working example of the ingest-time metric pipeline (see
+          // apps/workers/app/metric_pipeline.py): a moisture probe can't
+          // physically read outside 0-100%, so clamp glitches instead of
+          // alerting on them, and only store history when it actually moves.
+          {
+            key: "grain_moisture",
+            label: "Grain Moisture",
+            unit: "%",
+            min: 0,
+            max: 100,
+            onOutOfRange: "clamp",
+            loggingMode: "on-change",
+            deadband: 0.5,
+          },
           { key: "air_temp", label: "Drying Air Temperature", unit: "°C", min: -10, max: 120 },
         ],
         rules: [
@@ -70,6 +123,12 @@ const verticals: VerticalDef[] = [
           },
         ],
         sampleDevices: [{ name: "Dryer Unit A", location: "Mill Site 1" }],
+        defaultWidgets: [
+          { type: "gauge", metricKey: "grain_moisture" },
+          { type: "stat-tile", metricKey: "air_temp" },
+          { type: "line-chart", metricKey: "air_temp" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -105,8 +164,26 @@ const verticals: VerticalDef[] = [
             actionType: "webhook",
             actionConfig: { url: "https://example.org/hooks/weather-alert" },
           },
+          {
+            // Working example of the device-silence trigger (see
+            // apps/workers/app/silence_monitor.py): a station that's gone
+            // quiet for 30+ minutes is itself worth an alert, distinct from
+            // any threshold on the values it happens to be reporting.
+            name: "Station reporting no data",
+            metric: "wind_speed",
+            operator: "SILENT_FOR",
+            threshold: 30,
+            severity: "WARNING",
+            actionType: "notify",
+          },
         ],
         sampleDevices: [{ name: "Station North Field", location: "Farm Perimeter N" }],
+        defaultWidgets: [
+          { type: "gauge", metricKey: "wind_speed" },
+          { type: "stat-tile", metricKey: "temperature" },
+          { type: "line-chart", metricKey: "rainfall" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -144,6 +221,33 @@ const verticals: VerticalDef[] = [
           },
         ],
         sampleDevices: [{ name: "Chiller Bay 3", location: "Distribution Center West" }],
+        defaultWidgets: [
+          {
+            type: "svg-mimic",
+            label: "Chiller mimic",
+            svg: COLD_STORAGE_MIMIC,
+            bindings: [
+              { elementId: "temp-readout", metricKey: "temperature", mode: "text" },
+              {
+                elementId: "chamber",
+                metricKey: "temperature",
+                mode: "fill",
+                // freeze-alarm rule fires above -12 °C
+                thresholds: [
+                  { upTo: -18, color: "#2563eb" },
+                  { upTo: -12, color: "#3b82f6" },
+                  { color: "#ef4444" },
+                ],
+              },
+              { elementId: "door-open", metricKey: "door_open", mode: "visibility" },
+              { elementId: "humidity-readout", metricKey: "humidity", mode: "text" },
+            ],
+          },
+          { type: "gauge", metricKey: "temperature" },
+          { type: "stat-tile", metricKey: "humidity" },
+          { type: "line-chart", metricKey: "temperature" },
+          { type: "alarm-table" },
+        ],
       },
     ],
   },
@@ -592,6 +696,7 @@ async function main() {
           name: deviceType.name,
           description: deviceType.description,
           metrics: deviceType.metrics,
+          defaultWidgets: deviceType.defaultWidgets,
         },
         create: {
           verticalId: createdVertical.id,
@@ -599,6 +704,7 @@ async function main() {
           name: deviceType.name,
           description: deviceType.description,
           metrics: deviceType.metrics,
+          defaultWidgets: deviceType.defaultWidgets,
         },
       });
 
@@ -649,6 +755,20 @@ async function main() {
       },
       create: agent,
     });
+  }
+
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminEmail && adminPassword) {
+    const passwordHash = await hashPassword(adminPassword);
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { passwordHash, role: "ADMIN" },
+      create: { email: adminEmail, passwordHash, role: "ADMIN" },
+    });
+    console.log(`Upserted admin user ${adminEmail}.`);
+  } else {
+    console.log("ADMIN_EMAIL/ADMIN_PASSWORD not set — skipping admin user seed.");
   }
 
   console.log(

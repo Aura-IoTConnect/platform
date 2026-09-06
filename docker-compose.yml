@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # TimescaleDB's Apache-2.0-only build — see CLAUDE.md's "Telemetry
+    # storage" section. Upgrading an EXISTING volume from plain postgres
+    # (not a fresh one) needs a one-time manual step before `npm run
+    # db:migrate` will apply cleanly — see that section.
+    image: timescale/timescaledb:latest-pg16-oss
     environment:
       POSTGRES_USER: iotplatform
       POSTGRES_PASSWORD: iotplatform
@@ -16,6 +20,10 @@ services:
       - "1883:1883"
     volumes:
       - ./infra/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      # Bind mount (not a named volume) so apps/workers, running natively on
+      # the host, can read the plugin's auto-generated bootstrap admin
+      # password directly — see mqtt_dynsec.py.
+      - ./infra/mosquitto-dynsec-state:/mosquitto/config/dynsec
 
 volumes:
   postgres-data:

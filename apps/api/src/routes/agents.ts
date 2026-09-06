@@ -1,13 +1,50 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { callWorkers } from "../workersClient.js";
 
 const feedbackSchema = z.object({
   score: z.number().int().min(-1).max(1),
   comment: z.string().optional(),
 });
 
+const runAnomalyExplainerSchema = z.object({ alertId: z.string().min(1) });
+const runAutomationSuggesterSchema = z.object({ deviceTypeId: z.string().min(1) });
+
 export const agentsRouter = Router();
+
+// Trigger endpoints proxy to apps/workers (only workers calls Claude). This
+// keeps agent runs behind the same JWT auth as the rest of /api/*, and keeps
+// WORKERS_API_TOKEN server-side — the browser never sees it. See CLAUDE.md.
+
+agentsRouter.post("/anomaly-explainer/run", async (req, res) => {
+  const parsed = runAnomalyExplainerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { status, data } = await callWorkers("/agents/anomaly-explainer/run", {
+    alert_id: parsed.data.alertId,
+  });
+  res.status(status).json(data);
+});
+
+agentsRouter.post("/alert-triage/run", async (_req, res) => {
+  const { status, data } = await callWorkers("/agents/alert-triage/run", {});
+  res.status(status).json(data);
+});
+
+agentsRouter.post("/automation-suggester/run", async (req, res) => {
+  const parsed = runAutomationSuggesterSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const { status, data } = await callWorkers("/agents/automation-suggester/run", {
+    device_type_id: parsed.data.deviceTypeId,
+  });
+  res.status(status).json(data);
+});
 
 agentsRouter.get("/", async (_req, res) => {
   const agents = await prisma.agent.findMany({ orderBy: { name: "asc" } });
