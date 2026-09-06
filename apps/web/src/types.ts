@@ -6,14 +6,23 @@ export interface Vertical {
   deviceTypes: DeviceType[]
 }
 
-export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table'
+export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table' | 'svg-mimic'
 
 export interface WidgetDef {
   type: WidgetType
-  // Required for every type except 'alarm-table', which is bound to the
-  // device itself rather than one of its metrics.
+  // Required for every type except 'alarm-table' (bound to the device
+  // itself) and 'svg-mimic' (bound to many metrics via `bindings`).
   metricKey?: string
   label?: string
+  // 'svg-mimic' only — see widgets/SvgMimicWidget.tsx
+  svg?: string
+  bindings?: {
+    elementId: string
+    metricKey: string
+    mode: 'text' | 'fill' | 'visibility'
+    thresholds?: { upTo?: number; color: string }[]
+    unit?: string
+  }[]
 }
 
 export interface DeviceType {
@@ -81,4 +90,50 @@ export interface AgentRun {
   agent: Agent
   alert: Alert | null
   feedback: { score: number; comment: string | null } | null
+}
+
+export interface Rule {
+  id: string
+  deviceTypeId: string
+  name: string
+  metric: string
+  operator: 'GT' | 'GTE' | 'LT' | 'LTE' | 'EQ'
+  threshold: number
+  severity: 'INFO' | 'WARNING' | 'CRITICAL'
+  actionType: 'notify' | 'webhook' | 'actuator'
+  enabled: boolean
+}
+
+export interface BacktestResult {
+  sinceHours: number
+  devicesEvaluated: number
+  readingsEvaluated: number
+  breachingReadings: number
+  estimatedEpisodes: number
+  byDevice: {
+    deviceId: string
+    deviceName: string
+    readings: number
+    breaching: number
+    episodes: number
+    firstBreachAt: string | null
+    lastBreachAt: string | null
+  }[]
+}
+
+export interface BulkActuatorResult {
+  deviceTypeId: string
+  command: string
+  dispatched: number
+  failed: number
+  results: { deviceId: string; deviceName: string; ok: boolean; status: number; data: unknown }[]
+}
+
+export interface WatchlistItem {
+  id: string
+  deviceId: string
+  metricKey: string
+  sortOrder: number
+  createdAt: string
+  device: Device
 }

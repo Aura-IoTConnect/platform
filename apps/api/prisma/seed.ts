@@ -27,10 +27,34 @@ interface RuleDef {
 }
 
 interface WidgetDef {
-  type: "line-chart" | "gauge" | "stat-tile" | "alarm-table";
+  type: "line-chart" | "gauge" | "stat-tile" | "alarm-table" | "svg-mimic";
   metricKey?: string;
   label?: string;
+  // "svg-mimic" only — see apps/web/src/widgets/SvgMimicWidget.tsx
+  svg?: string;
+  bindings?: {
+    elementId: string;
+    metricKey: string;
+    mode: "text" | "fill" | "visibility";
+    thresholds?: { upTo?: number; color: string }[];
+  }[];
 }
+
+// A minimal synoptic screen for the cold-storage unit: chamber body whose
+// fill tracks temperature, a live readout, and a door indicator that only
+// shows while door_open > 0. Authored by hand here; real deployments would
+// paste an Inkscape export. Everything is plain SVG — no scripts.
+const COLD_STORAGE_MIMIC = `<svg viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, sans-serif">
+  <rect id="chamber" x="20" y="20" width="180" height="80" rx="8" fill="#3b82f6" stroke="#94a3b8" stroke-width="2"/>
+  <text x="110" y="52" text-anchor="middle" fill="#fff" font-size="12">Chamber</text>
+  <text id="temp-readout" x="110" y="76" text-anchor="middle" fill="#fff" font-size="18" font-weight="600">—</text>
+  <rect x="200" y="30" width="10" height="60" fill="#94a3b8"/>
+  <g id="door-open" visibility="hidden">
+    <rect x="210" y="30" width="10" height="60" fill="#f59e0b" transform="rotate(-25 210 30)"/>
+    <text x="250" y="66" fill="#f59e0b" font-size="12">DOOR OPEN</text>
+  </g>
+  <text id="humidity-readout" x="250" y="100" fill="#94a3b8" font-size="11">—</text>
+</svg>`;
 
 interface DeviceTypeDef {
   key: string;
@@ -140,6 +164,18 @@ const verticals: VerticalDef[] = [
             actionType: "webhook",
             actionConfig: { url: "https://example.org/hooks/weather-alert" },
           },
+          {
+            // Working example of the device-silence trigger (see
+            // apps/workers/app/silence_monitor.py): a station that's gone
+            // quiet for 30+ minutes is itself worth an alert, distinct from
+            // any threshold on the values it happens to be reporting.
+            name: "Station reporting no data",
+            metric: "wind_speed",
+            operator: "SILENT_FOR",
+            threshold: 30,
+            severity: "WARNING",
+            actionType: "notify",
+          },
         ],
         sampleDevices: [{ name: "Station North Field", location: "Farm Perimeter N" }],
         defaultWidgets: [
@@ -186,6 +222,27 @@ const verticals: VerticalDef[] = [
         ],
         sampleDevices: [{ name: "Chiller Bay 3", location: "Distribution Center West" }],
         defaultWidgets: [
+          {
+            type: "svg-mimic",
+            label: "Chiller mimic",
+            svg: COLD_STORAGE_MIMIC,
+            bindings: [
+              { elementId: "temp-readout", metricKey: "temperature", mode: "text" },
+              {
+                elementId: "chamber",
+                metricKey: "temperature",
+                mode: "fill",
+                // freeze-alarm rule fires above -12 °C
+                thresholds: [
+                  { upTo: -18, color: "#2563eb" },
+                  { upTo: -12, color: "#3b82f6" },
+                  { color: "#ef4444" },
+                ],
+              },
+              { elementId: "door-open", metricKey: "door_open", mode: "visibility" },
+              { elementId: "humidity-readout", metricKey: "humidity", mode: "text" },
+            ],
+          },
           { type: "gauge", metricKey: "temperature" },
           { type: "stat-tile", metricKey: "humidity" },
           { type: "line-chart", metricKey: "temperature" },
