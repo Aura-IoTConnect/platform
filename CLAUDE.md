@@ -361,6 +361,30 @@ already-fetched telemetry, grouped by metric. Three seeded device types
 as a working example — adding it to more is a seed-data change, not a code
 change, same as adding a vertical.
 
+A fifth type, `svg-mimic` (`SvgMimicWidget.tsx`), is a SCADA-style
+synoptic screen: static SVG markup plus `bindings` of element ids to
+metrics (`mode: "text" | "fill" | "visibility"`, with `thresholds` for
+fill colors). The SVG is authored externally and pasted into seed data
+(`COLD_STORAGE_MIMIC` in `seed.ts` is the working example on
+cold-storage-unit) — deliberately a widget type in the existing library,
+not an in-app drag-and-drop screen editor (evaluated and rejected as
+disproportionate). Markup is run through a small sanitizer (scripts,
+`on*=` handlers, `javascript:` hrefs stripped) as defence in depth; the
+trust boundary is that `defaultWidgets` is admin/seed config. Mined from
+RapidSCADA's mimic diagrams and Scada-LTS's SVG synoptic panels.
+
+### Alerts tab: critical-alert cue
+
+`AlertsTab.tsx` polls `GET /api/alerts` every 15s and, when a CRITICAL/OPEN
+alert id appears that wasn't in the previous poll, shows a flashing
+banner listing it until dismissed and plays a short WebAudio beep (the
+first load is a baseline — it never alarms on history). Browsers gate
+audio behind a prior user gesture, so the beep can silently no-op; the
+banner is the reliable part. Closes the gap between the `notify`
+actionType (still just a log line) and an operator actually noticing
+while the dashboard is open — the traditional SCADA alarm horn/annunciator
+(RapidSCADA's notification plugin, ScadaBR's "alarmes sonoros").
+
 ### Watchlist (`apps/web/src/WatchlistTab.tsx`, `/api/watchlist`)
 
 A user's own, freely-mixed list of pinned `(device, metric)` pairs from

@@ -67,9 +67,10 @@ model DeviceType {
   /// dashboard widgets to render for devices of this type, and in what
   /// order — see apps/web/src/widgets/. Null/empty falls back to the
   /// original one-line-chart-per-metric behavior. `type` is one of
-  /// "line-chart" | "gauge" | "stat-tile" | "alarm-table"; metricKey is
-  /// required for all but "alarm-table", which is bound to the device
-  /// itself, not a metric.
+  /// "line-chart" | "gauge" | "stat-tile" | "alarm-table" | "svg-mimic";
+  /// metricKey is required for all but "alarm-table" (bound to the device
+  /// itself) and "svg-mimic" (static SVG + `bindings` of element ids to
+  /// metrics — see apps/web/src/widgets/SvgMimicWidget.tsx).
   defaultWidgets Json?    @map("default_widgets")
   devices        Device[]
   rules          Rule[]
