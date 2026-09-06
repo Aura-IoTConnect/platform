@@ -185,6 +185,102 @@ miniature (mining ThingsBoard for ideas worth porting, not its code).
   `apps/api` endpoint and shows the one-time credential — mirroring the
   existing device-apiKey reveal banner.
 
+### Ingest-time metric pipeline (`apps/workers/app/metric_pipeline.py`)
+
+One pre-processing step sits between a raw reading arriving and the
+persist → evaluate-rules control loop below, configured per metric entry in
+`DeviceType.metrics` (no schema migration — `metrics` is already JSON):
+
+- `transform: {type: "linear", factor, offset}` — `value*factor + offset`,
+  for sensors that report raw counts or the wrong unit (rules assume the
+  metric's declared unit).
+- `onOutOfRange: "pass" | "clamp" | "reject"` — checked against the entry's
+  `min`/`max` *after* the transform; default `pass` is the pre-existing
+  behavior. `reject` means the reading is neither persisted nor
+  rule-evaluated (HTTP ingestion returns `422`, MQTT logs a warning).
+  Non-finite values (NaN/inf) are always rejected regardless.
+- `loggingMode: "on-change"` + `deadband` — skips the `TelemetryReading`
+  insert when the value hasn't moved past `deadband` since the last
+  *stored* reading for that (device, metric). This thins history only:
+  `evaluate()` still runs on every reading, so alerting is unaffected.
+
+Concept mined from Telegraf/NiFi/Node-RED's staged transform pipelines and
+RapidSCADA/ScadaBR's per-point logging modes, deliberately reduced to a
+fixed set of `type`-dispatched built-ins (the same convention
+`defaultWidgets` uses) — not a plugin loader or arbitrary-code stage. The
+seeded `grain-dryer` type's `grain_moisture` metric is the working example.
+
+### Platform observability (`GET /metrics` on both services)
+
+A different axis from `Alert`/`TelemetryReading`, which model the
+*industrial process* being monitored: these metrics are about the health
+of `apps/api` and `apps/workers` themselves. Both expose Prometheus text
+format — `apps/api/src/metrics.ts` (prom-client: default Node process
+metrics + `http_requests_total` / `http_request_duration_seconds` labeled
+by method / matched route template / status) and
+`apps/workers/app/metrics.py` (prometheus_client:
+`ingestion_readings_total{transport,outcome}`,
+`rule_evaluation_duration_seconds`, `alerts_created_total{severity}`,
+`mqtt_bridge_connected` 0/1). Both `/metrics` routes are deliberately
+outside the JWT / workers-token gates, same carve-out as `/health` — a
+scraper carries no user token, and it's ops data, not device/user data.
+
+Label sets are tiny and fixed on purpose: a Prometheus series exists per
+unique label combination, so device/rule/alert/user ids must never become
+labels. Nothing scrapes these yet — a Prometheus server + Grafana in
+`docker-compose.yml` is the obvious next step once there's an operational
+reason for it, not before (mined from Prometheus/Grafana's pull model;
+endpoints first, infra later).
+
+### Rule backtest (dry-run before enabling)
+
+`POST /api/rules/backtest` (`src/routes/rules.ts`, JWT-protected) proxies
+to `apps/workers`' `POST /rules/backtest` (`app/backtest_routes.py` +
+`backtest_service.py`, behind `require_workers_token` — same boundary as
+agent triggers) with `{deviceTypeId, metric, operator, threshold,
+sinceHours?}`. It replays that candidate condition over the stored
+`TelemetryReading` rows of every device of that type in the window, using
+`rule_engine.OPERATORS` verbatim, and reports `breachingReadings` plus an
+`estimatedEpisodes` count that mirrors the live alert lifecycle per device
+(a breach opens an episode, it closes on the first non-breaching reading).
+Read-only: no `Alert`/`ActuatorCommand` rows, no notify/webhook dispatch,
+no cooldown consumed. The device detail view lists the type's rules with a
+"Backtest 7d" button each (`DeviceDetail.tsx`). Mined from the
+validate-before-deploy idea behind OpenModelica/OMSimulator co-simulation,
+scaled to one flat condition row replayed over stored data.
+
+### Device silence ("no data") alarm
+
+Rule evaluation only ever runs synchronously inside the ingest path (see
+"The two loops" below) — a device that stops reporting entirely breaches
+nothing and raises no alert, a structural blind spot for a SCADA-style
+platform. `Rule.operator: "SILENT_FOR"` is the one rule type that isn't
+event-driven: `threshold` is minutes of silence on `metric` (still scoped
+to one `DeviceType`, like every other rule), checked periodically instead
+of per-reading, since there's no reading to react to.
+
+- `apps/workers/app/silence_monitor.py::check_silence_rules` runs every
+  `SILENCE_CHECK_INTERVAL_SECONDS` (default 60, env-configurable — a
+  background `asyncio` task started in `main.py`'s lifespan, cancelled on
+  shutdown). For each enabled `SILENT_FOR` rule, every device of that
+  `DeviceType` whose latest reading for `metric` is older than `threshold`
+  minutes (or has never reported it) gets an `Alert`, deduped to at most
+  one active alert per `(device, rule)` — same invariant as the normal
+  control loop, but implemented standalone here since this branch predates
+  the fuller alert-dedup/cooldown work on `rule_engine.py` (a sibling
+  branch); the two will need reconciling when both land.
+- Auto-clear lives in `rule_engine.py::evaluate()`, not the periodic
+  check — a reading arriving for that metric is exactly the event that
+  ends the silence, so it resolves any open `SILENT_FOR` alert for that
+  `(device, rule)` on the normal per-reading path.
+- `actionType: "actuator"`/`"notify"` dispatch the same way a threshold
+  rule's does (`actuator_service.py::dispatch_command`, or a log line);
+  CRITICAL severity auto-triggers `anomaly-explainer` the same way too.
+- One new scheduled check, not a chained/graph rule engine — it reuses the
+  existing `Alert` table and severity/actionType shape rather than adding
+  new plumbing. The seeded `weather-station`'s "Station reporting no data"
+  rule (`SILENT_FOR` on `wind_speed`, 30 minutes) is the working example.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered
@@ -213,6 +309,17 @@ device link. Two sources write it, both through
   (`app/actuator_routes.py`) the same way agent triggers do — see Auth
   above. `GET /api/actuator-commands?deviceId=` (`apps/api`) reads the
   history straight from Postgres, no workers round-trip needed.
+- **Bulk, by device type** — `POST /api/device-types/:id/actuator`
+  (`src/routes/deviceTypes.ts`) fans the same `{command, value}` out to
+  every device of that type by looping the per-device workers call, so
+  each still writes its own `ActuatorCommand` (`source: MANUAL`). Always
+  `200` with a per-device `results` list plus `dispatched`/`failed`
+  counts — a partial failure (one device's workers call 502s) must read as
+  neither full success nor full failure. The "Send to all <type>s" button
+  in `DeviceDetail.tsx` uses it. App-layer analogue of a broker-level
+  multi-device "channel" (mined from Magistrala's Channel model); our
+  `telemetry/<device_id>/<metric>` topic convention is inherently
+  one-device-per-topic, so this lives in the API, not the broker.
 
 `callWorkers` (`apps/api/src/workersClient.ts`) catches network-level
 failures (workers unreachable) and returns a normal `502`, not a rejected
@@ -260,6 +367,107 @@ variants, see `agents_routes.py`), but the dashboard triggers them through
 Auth above. Listing runs and submitting feedback also lives on `apps/api`
 (`GET /api/agents/runs`, `POST /api/agents/runs/:id/feedback`) since that's a
 plain DB read/write, no Claude access needed.
+
+### Dashboard widgets (`apps/web/src/widgets/`)
+
+A `DeviceType` can declare `defaultWidgets: Json` — an array of
+`{type, metricKey?, label?}` (`type` is `"line-chart" | "gauge" |
+"stat-tile" | "alarm-table"`; `metricKey` is required for all but
+`alarm-table`, which is bound to the device itself). `DeviceDetail.tsx`
+renders that config via `WidgetRenderer.tsx` instead of its original
+one-line-chart-per-metric loop, which is still the fallback for any device
+type that leaves `defaultWidgets` null/empty (mining ThingsBoard's
+dashboard/widget model for the idea worth porting — a widget's data source
+resolved declaratively rather than hardcoded — not its code or its full
+drag-and-drop dashboard editor, which is disproportionate at this
+platform's scale; see earlier conversation).
+
+Each widget type is its own small component (`LineChartWidget`,
+`GaugeWidget`, `StatTile`, `AlarmTableWidget`) — no charting library, same
+zero-dependency inline-SVG convention as the existing `LineChart.tsx`
+(`GaugeWidget` is an SVG radial progress ring, not an external gauge
+component). `AlarmTableWidget` fetches its own data
+(`GET /api/alerts?deviceId=`); the others reuse `DeviceDetail.tsx`'s
+already-fetched telemetry, grouped by metric. Three seeded device types
+(cold-storage-unit, grain-dryer, weather-station) declare `defaultWidgets`
+as a working example — adding it to more is a seed-data change, not a code
+change, same as adding a vertical.
+
+A fifth type, `svg-mimic` (`SvgMimicWidget.tsx`), is a SCADA-style
+synoptic screen: static SVG markup plus `bindings` of element ids to
+metrics (`mode: "text" | "fill" | "visibility"`, with `thresholds` for
+fill colors). The SVG is authored externally and pasted into seed data
+(`COLD_STORAGE_MIMIC` in `seed.ts` is the working example on
+cold-storage-unit) — deliberately a widget type in the existing library,
+not an in-app drag-and-drop screen editor (evaluated and rejected as
+disproportionate). Markup is run through a small sanitizer (scripts,
+`on*=` handlers, `javascript:` hrefs stripped) as defence in depth; the
+trust boundary is that `defaultWidgets` is admin/seed config. Mined from
+RapidSCADA's mimic diagrams and Scada-LTS's SVG synoptic panels.
+
+### Alerts tab: critical-alert cue
+
+`AlertsTab.tsx` polls `GET /api/alerts` every 15s and, when a CRITICAL/OPEN
+alert id appears that wasn't in the previous poll, shows a flashing
+banner listing it until dismissed and plays a short WebAudio beep (the
+first load is a baseline — it never alarms on history). Browsers gate
+audio behind a prior user gesture, so the beep can silently no-op; the
+banner is the reliable part. Closes the gap between the `notify`
+actionType (still just a log line) and an operator actually noticing
+while the dashboard is open — the traditional SCADA alarm horn/annunciator
+(RapidSCADA's notification plugin, ScadaBR's "alarmes sonoros").
+
+### Watchlist (`apps/web/src/WatchlistTab.tsx`, `/api/watchlist`)
+
+A user's own, freely-mixed list of pinned `(device, metric)` pairs from
+anywhere in the fleet — the fourth dashboard tab. Distinct from
+`DeviceType.defaultWidgets` (an admin-authored template that applies to
+every device of one type and only that device's own metrics): a watchlist
+is per-user (`WatchlistItem.userId`, every route scoped to `req.user.id`,
+a cross-user delete is a plain `404`), cross-device, and assembled at
+runtime. `POST /api/watchlist` validates the metric against the device's
+type taxonomy and returns `409` on a duplicate pin. Each card reuses
+`StatTile` + `LineChartWidget` from the widget library over the device's
+telemetry. `apps/workers` mirrors the table in `db.py` but never touches
+it. Mined from ScadaBR's Watch List.
+
+### Telemetry storage (TimescaleDB hypertable)
+
+`telemetry_readings` is a TimescaleDB hypertable partitioned on
+`timestamp`, not a plain Postgres table — `docker-compose.yml` and CI both
+run the `timescale/timescaledb:latest-pg16-oss` image instead of plain
+`postgres`. Deliberately the Apache-2.0-only build: it structurally cannot
+run TSL-licensed features (compression, continuous aggregates, retention
+policies — `add_retention_policy` fails outright with a license error on
+this image), so nothing here can accidentally depend on one. This is only
+today's hypertable-conversion step — no downsampling/rollups/retention
+exist yet, and adding them is a separate, deliberate decision (verified by
+hand against a real container before writing this, not assumed from docs).
+
+A **fresh** volume (new contributor, CI's ephemeral service container)
+just works: the image's own default config already sets
+`shared_preload_libraries = timescaledb`, so `CREATE EXTENSION
+timescaledb` in the migration succeeds immediately. An **existing** volume
+that was initialized by plain `postgres:16-alpine` (i.e. any dev
+environment from before this change) does not have that config and needs
+a one-time manual step before `npm run db:migrate --workspace=apps/api`
+will apply cleanly — `docker compose up -d` to switch the running
+container onto the new image against the same volume (data survives; only
+the config file is stale), then:
+
+```bash
+docker exec -it iotplatform-postgres-1 psql -U iotplatform -d iotplatform -c \
+  "ALTER SYSTEM SET shared_preload_libraries='timescaledb';"
+docker compose restart postgres
+```
+
+`TelemetryReading`'s primary key is `(id, timestamp)`, not `id` alone —
+`create_hypertable` requires the partitioning column to be part of any
+unique/primary key constraint on the table (verified directly: attempting
+it against a single-column `id` PK fails with "cannot create a unique
+index without the column \"timestamp\""). Nothing reads/writes by
+`TelemetryReading.id` alone anywhere in the codebase, so this is a
+schema-only widening, not a behavior change.
 
 ## Commands
 

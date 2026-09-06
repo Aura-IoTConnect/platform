@@ -11,7 +11,13 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # TimescaleDB's Apache-2.0-only build (no TSL features bundled at all,
+        # so it's structurally impossible to depend on a licensed feature by
+        # accident) — see CLAUDE.md's "Telemetry storage" section. A fresh
+        # ephemeral service container like this one initializes with
+        # shared_preload_libraries already set, unlike an existing volume
+        # upgraded from plain postgres — see the migration for that path.
+        image: timescale/timescaledb:latest-pg16-oss
         env:
           POSTGRES_USER: iotplatform
           POSTGRES_PASSWORD: iotplatform
