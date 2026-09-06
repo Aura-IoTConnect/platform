@@ -144,6 +144,47 @@ same raw key `apps/api` already generates for HTTP ingestion
   `apps/api` device-delete route calls it yet — soft-delete support lives on
   a sibling branch/PR).
 
+### Self-service device provisioning
+
+Until now, onboarding a device meant an operator creating its `Device` row
+first (`POST /api/devices`) and handing the returned `apiKey` to the device
+out of band. `POST /ingestion/provision` (`apps/workers/app/provisioning_routes.py`
++ `provisioning_service.py`) is a second path: a device creates its own
+`Device` row by presenting a `DeviceType`-level provisioning credential
+instead — the ThingsBoard "allow-create-new" provisioning strategy, in
+miniature (mining ThingsBoard for ideas worth porting, not its code).
+
+- **`DeviceType.provisionKey`/`provisionSecretHash`**: a public-ish lookup
+  identifier + the SHA-256 hash of a secret, generated via
+  `POST /api/device-types/:id/provisioning-secret` (JWT-protected, same
+  one-time-reveal / rotate-invalidates-the-old-pair UX as
+  `POST /api/devices/:id/rotate-key`). Both null until an operator
+  generates one — provisioning is opt-in per device type. `provisionKey`
+  isn't itself secret (think client ID, meant to be embedded in firmware)
+  so it's included in normal `DeviceType` responses; `provisionSecretHash`
+  never is, from either `deviceTypes.ts`'s own routes or the same field
+  nested inside a `Device` response's `deviceType` (`devices.ts` needed its
+  own, separate omission for that nested copy — a real leak, caught in this
+  session, is exactly why both call sites need it).
+- **`POST /ingestion/provision`** (no auth dependency of its own — the
+  `provisionKey`/`provisionSecret` pair in the body *is* the authentication,
+  same relationship `apiKey` has to `POST /ingestion/telemetry`): looks up
+  the `DeviceType` by `provisionKey`, verifies the secret's hash, creates
+  the `Device` row, generates a raw `apiKey` the same way `apps/api` does
+  (`apps/workers/app/provisioning_service.py`'s `_generate_key`/`_hash_key`
+  mirror `apps/api/src/apiKeys.ts` exactly), and best-effort provisions its
+  MQTT credential the same way `POST /api/devices` does. Returns
+  `{deviceId, apiKey, mqttProvisioned}` — a self-provisioned device is
+  indistinguishable from an operator-created one afterward.
+- This is the one place `apps/workers` **creates** a `Device` row rather
+  than only reading/updating one — still consistent with the schema-
+  ownership rule above (that rule is about DDL/migrations, not row-level
+  writes; workers already inserts into `alerts`/`actuator_commands`/etc.).
+- The dashboard's Devices tab has a "Generate/Rotate provisioning key"
+  button next to the device-type picker (`DevicesTab.tsx`) that calls the
+  `apps/api` endpoint and shows the one-time credential — mirroring the
+  existing device-apiKey reveal banner.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered

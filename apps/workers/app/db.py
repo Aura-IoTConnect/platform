@@ -71,6 +71,8 @@ device_types = Table(
     Column("description", String),
     Column("metrics", JSONB),
     Column("created_at", DateTime(timezone=True)),
+    Column("provision_key", String),
+    Column("provision_secret_hash", String),
 )
 
 verticals = Table(
