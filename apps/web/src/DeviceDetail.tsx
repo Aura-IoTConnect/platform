@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
-import type { Device } from './types'
+import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
 interface Reading {
@@ -36,11 +36,16 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   const [rotating, setRotating] = useState(false)
   const [newApiKey, setNewApiKey] = useState<string | null>(null)
 
+  const [rules, setRules] = useState<Rule[]>([])
+  const [backtests, setBacktests] = useState<Record<string, BacktestResult | 'loading' | 'error'>>({})
+
   const [commands, setCommands] = useState<ActuatorCommand[]>([])
   const [commandName, setCommandName] = useState('')
   const [commandValue, setCommandValue] = useState('')
   const [sending, setSending] = useState(false)
   const [actuatorError, setActuatorError] = useState<string | null>(null)
+  const [sendingAll, setSendingAll] = useState(false)
+  const [bulkResult, setBulkResult] = useState<BulkActuatorResult | null>(null)
 
   const loadCommands = () => {
     apiGet<ActuatorCommand[]>(`/api/actuator-commands?deviceId=${device.id}&limit=10`)
@@ -54,8 +59,29 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       .then(setReadings)
       .finally(() => setLoading(false))
     loadCommands()
+    apiGet<Rule[]>(`/api/rules?deviceTypeId=${device.deviceType.id}`)
+      .then(setRules)
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id])
+
+  // Dry-run a rule against the last 7 days of stored telemetry for this
+  // device type — read-only, no alerts/dispatch (see CLAUDE.md, Rule backtest).
+  const backtest = async (rule: Rule) => {
+    setBacktests((b) => ({ ...b, [rule.id]: 'loading' }))
+    try {
+      const result = await apiSend<BacktestResult>('/api/rules/backtest', 'POST', {
+        deviceTypeId: rule.deviceTypeId,
+        metric: rule.metric,
+        operator: rule.operator,
+        threshold: rule.threshold,
+        sinceHours: 168,
+      })
+      setBacktests((b) => ({ ...b, [rule.id]: result }))
+    } catch {
+      setBacktests((b) => ({ ...b, [rule.id]: 'error' }))
+    }
+  }
 
   const byMetric = new Map<string, Reading[]>()
   for (const r of readings) {
@@ -110,6 +136,27 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
     }
   }
 
+  // Same command/value inputs, fanned out to every device of this type via
+  // POST /api/device-types/:id/actuator — see CLAUDE.md, Actuator control.
+  const sendToAll = async () => {
+    if (!commandName.trim()) return
+    setActuatorError(null)
+    setBulkResult(null)
+    setSendingAll(true)
+    try {
+      const result = await apiSend<BulkActuatorResult>(`/api/device-types/${device.deviceType.id}/actuator`, 'POST', {
+        command: commandName,
+        value: commandValue || undefined,
+      })
+      setBulkResult(result)
+      loadCommands()
+    } catch {
+      setActuatorError('Failed to send command to all devices — is apps/workers running?')
+    } finally {
+      setSendingAll(false)
+    }
+  }
+
   return (
     <div className="device-detail">
       <div className="device-detail-header">
@@ -139,6 +186,45 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
         </div>
       )}
 
+      {rules.length > 0 && (
+        <div className="rules-panel">
+          <span className="widget-label">Rules for {device.deviceType.name}</span>
+          <ul className="record-list">
+            {rules.map((rule) => {
+              const bt = backtests[rule.id]
+              return (
+                <li key={rule.id}>
+                  <div className="record-main">
+                    <span className="record-title">
+                      {rule.name}
+                      {!rule.enabled && <span className="status-pill">disabled</span>}
+                    </span>
+                    <span className="record-subtitle">
+                      {rule.metric} {rule.operator} {rule.threshold} · {rule.severity} · {rule.actionType}
+                      {bt && bt !== 'loading' && bt !== 'error' && (
+                        <>
+                          {' '}
+                          · would have fired <strong>{bt.estimatedEpisodes}</strong> time
+                          {bt.estimatedEpisodes === 1 ? '' : 's'} across {bt.devicesEvaluated} device
+                          {bt.devicesEvaluated === 1 ? '' : 's'} in the last 7 days ({bt.breachingReadings}/
+                          {bt.readingsEvaluated} readings breached)
+                        </>
+                      )}
+                      {bt === 'error' && ' · backtest failed — is apps/workers running?'}
+                    </span>
+                  </div>
+                  <div className="record-actions">
+                    <button type="button" onClick={() => backtest(rule)} disabled={bt === 'loading'}>
+                      {bt === 'loading' ? 'Testing…' : 'Backtest 7d'}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       <div className="actuator-panel">
         <form onSubmit={sendCommand} className="device-form">
           <input
@@ -153,12 +239,34 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
             onChange={(e) => setCommandValue(e.target.value)}
             placeholder="Value (optional)"
           />
-          <button type="submit" disabled={sending}>
+          <button type="submit" disabled={sending || sendingAll}>
             {sending ? 'Sending…' : 'Send command'}
+          </button>
+          <button type="button" onClick={sendToAll} disabled={sending || sendingAll}>
+            {sendingAll ? 'Sending…' : `Send to all ${device.deviceType.name}s`}
           </button>
         </form>
 
         {actuatorError && <p className="error">{actuatorError}</p>}
+
+        {bulkResult && (
+          <div className="bulk-result">
+            <span className="widget-label">
+              <code>{bulkResult.command}</code> → {bulkResult.dispatched} dispatched
+              {bulkResult.failed > 0 ? `, ${bulkResult.failed} failed` : ''}
+            </span>
+            <ul className="record-list">
+              {bulkResult.results.map((r) => (
+                <li key={r.deviceId}>
+                  <span className="record-title">{r.deviceName}</span>
+                  <span className={`status-pill status-${r.ok ? 'online' : 'failed'}`}>
+                    {r.ok ? 'sent' : `failed (${r.status})`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {commands.length > 0 && (
           <ul className="record-list">

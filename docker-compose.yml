@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # TimescaleDB's Apache-2.0-only build — see CLAUDE.md's "Telemetry
+    # storage" section. Upgrading an EXISTING volume from plain postgres
+    # (not a fresh one) needs a one-time manual step before `npm run
+    # db:migrate` will apply cleanly — see that section.
+    image: timescale/timescaledb:latest-pg16-oss
     environment:
       POSTGRES_USER: iotplatform
       POSTGRES_PASSWORD: iotplatform

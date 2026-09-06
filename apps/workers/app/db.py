@@ -18,7 +18,9 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     MetaData,
+    PrimaryKeyConstraint,
     String,
     Table,
 )
@@ -31,7 +33,9 @@ metadata = MetaData()
 # create_type=False so SQLAlchemy never tries to (re)create them — Prisma
 # migrations own that.
 device_status_enum = ENUM("ONLINE", "OFFLINE", "MAINTENANCE", name="device_status", create_type=False, metadata=metadata)
-rule_operator_enum = ENUM("GT", "GTE", "LT", "LTE", "EQ", name="rule_operator", create_type=False, metadata=metadata)
+rule_operator_enum = ENUM(
+    "GT", "GTE", "LT", "LTE", "EQ", "SILENT_FOR", name="rule_operator", create_type=False, metadata=metadata
+)
 alert_severity_enum = ENUM("INFO", "WARNING", "CRITICAL", name="alert_severity", create_type=False, metadata=metadata)
 alert_status_enum = ENUM("OPEN", "ACKNOWLEDGED", "RESOLVED", name="alert_status", create_type=False, metadata=metadata)
 agent_run_status_enum = ENUM(
@@ -86,15 +90,20 @@ verticals = Table(
     Column("created_at", DateTime(timezone=True)),
 )
 
+# Composite PK (id, timestamp), not just id — this is a TimescaleDB
+# hypertable partitioned on timestamp, and create_hypertable requires the
+# partitioning column to be part of any unique/primary key constraint. See
+# CLAUDE.md's "Telemetry storage" section.
 telemetry_readings = Table(
     "telemetry_readings",
     metadata,
-    Column("id", String, primary_key=True),
+    Column("id", String),
     Column("device_id", String, ForeignKey("devices.id")),
     Column("metric", String),
     Column("value", Float),
     Column("unit", String),
     Column("timestamp", DateTime(timezone=True)),
+    PrimaryKeyConstraint("id", "timestamp"),
 )
 
 rules = Table(
@@ -159,6 +168,20 @@ actuator_commands = Table(
     Column("command", String),
     Column("value", JSONB),
     Column("source", actuator_command_source_enum),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes watchlist rows today — they're a dashboard concern.
+watchlist_items = Table(
+    "watchlist_items",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("metric_key", String),
+    Column("sort_order", Integer),
     Column("created_at", DateTime(timezone=True)),
 )
 
