@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     MetaData,
     String,
     Table,
@@ -159,6 +160,20 @@ actuator_commands = Table(
     Column("command", String),
     Column("value", JSONB),
     Column("source", actuator_command_source_enum),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes watchlist rows today — they're a dashboard concern.
+watchlist_items = Table(
+    "watchlist_items",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("user_id", String),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("metric_key", String),
+    Column("sort_order", Integer),
     Column("created_at", DateTime(timezone=True)),
 )
 

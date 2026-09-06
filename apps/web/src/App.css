@@ -314,6 +314,31 @@
   color: var(--text-secondary);
 }
 
+.watchlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.watchlist-card {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.watchlist-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.watchlist-card .widget-grid {
+  margin-bottom: 0;
+}
+
 .record-main {
   display: flex;
   flex-direction: column;
