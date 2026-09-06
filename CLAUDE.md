@@ -249,6 +249,38 @@ no cooldown consumed. The device detail view lists the type's rules with a
 validate-before-deploy idea behind OpenModelica/OMSimulator co-simulation,
 scaled to one flat condition row replayed over stored data.
 
+### Device silence ("no data") alarm
+
+Rule evaluation only ever runs synchronously inside the ingest path (see
+"The two loops" below) — a device that stops reporting entirely breaches
+nothing and raises no alert, a structural blind spot for a SCADA-style
+platform. `Rule.operator: "SILENT_FOR"` is the one rule type that isn't
+event-driven: `threshold` is minutes of silence on `metric` (still scoped
+to one `DeviceType`, like every other rule), checked periodically instead
+of per-reading, since there's no reading to react to.
+
+- `apps/workers/app/silence_monitor.py::check_silence_rules` runs every
+  `SILENCE_CHECK_INTERVAL_SECONDS` (default 60, env-configurable — a
+  background `asyncio` task started in `main.py`'s lifespan, cancelled on
+  shutdown). For each enabled `SILENT_FOR` rule, every device of that
+  `DeviceType` whose latest reading for `metric` is older than `threshold`
+  minutes (or has never reported it) gets an `Alert`, deduped to at most
+  one active alert per `(device, rule)` — same invariant as the normal
+  control loop, but implemented standalone here since this branch predates
+  the fuller alert-dedup/cooldown work on `rule_engine.py` (a sibling
+  branch); the two will need reconciling when both land.
+- Auto-clear lives in `rule_engine.py::evaluate()`, not the periodic
+  check — a reading arriving for that metric is exactly the event that
+  ends the silence, so it resolves any open `SILENT_FOR` alert for that
+  `(device, rule)` on the normal per-reading path.
+- `actionType: "actuator"`/`"notify"` dispatch the same way a threshold
+  rule's does (`actuator_service.py::dispatch_command`, or a log line);
+  CRITICAL severity auto-triggers `anomaly-explainer` the same way too.
+- One new scheduled check, not a chained/graph rule engine — it reuses the
+  existing `Alert` table and severity/actionType shape rather than adding
+  new plumbing. The seeded `weather-station`'s "Station reporting no data"
+  rule (`SILENT_FOR` on `wind_speed`, 30 minutes) is the working example.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered

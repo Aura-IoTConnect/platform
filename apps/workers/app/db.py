@@ -33,7 +33,9 @@ metadata = MetaData()
 # create_type=False so SQLAlchemy never tries to (re)create them — Prisma
 # migrations own that.
 device_status_enum = ENUM("ONLINE", "OFFLINE", "MAINTENANCE", name="device_status", create_type=False, metadata=metadata)
-rule_operator_enum = ENUM("GT", "GTE", "LT", "LTE", "EQ", name="rule_operator", create_type=False, metadata=metadata)
+rule_operator_enum = ENUM(
+    "GT", "GTE", "LT", "LTE", "EQ", "SILENT_FOR", name="rule_operator", create_type=False, metadata=metadata
+)
 alert_severity_enum = ENUM("INFO", "WARNING", "CRITICAL", name="alert_severity", create_type=False, metadata=metadata)
 alert_status_enum = ENUM("OPEN", "ACKNOWLEDGED", "RESOLVED", name="alert_status", create_type=False, metadata=metadata)
 agent_run_status_enum = ENUM(
