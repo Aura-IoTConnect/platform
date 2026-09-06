@@ -4,10 +4,13 @@ into the same ingest_reading() pipeline used by POST /ingestion/telemetry.
 Topic convention: `telemetry/<device_id>/<metric>`, JSON payload
 `{"value": <float>, "unit": <str, optional>}`.
 
-The broker requires a username/password (infra/mosquitto.passwd +
-mosquitto.acl, restricted to the telemetry/# topic namespace) — a single
-shared credential for all publishers, not per-device like the HTTP ingestion
-path's Device.apiKeyHash. See CLAUDE.md.
+The broker requires a username/password, managed by Mosquitto's
+dynamic-security plugin (app/mqtt_dynsec.py) — most devices get their own
+provisioned credential (username=device_id), matching the HTTP ingestion
+path's per-device Device.apiKeyHash; MQTT_USERNAME/MQTT_PASSWORD below is
+the shared fallback credential apps/workers' own bridge connects with (it
+needs telemetry-subscriber, not just device-publisher, to actually read
+messages). See CLAUDE.md.
 
 paho-mqtt's callbacks run on a background network thread, not the asyncio
 event loop FastAPI/SQLAlchemy need — every message is handed off to the main
@@ -28,7 +31,7 @@ from app.telemetry_service import ingest_reading
 
 logger = logging.getLogger("mqtt")
 
-TOPIC_PATTERN = "telemetry/+/+"
+TOPIC_PATTERN = "telemetry/#"
 
 
 class MqttBridge:

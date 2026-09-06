@@ -16,8 +16,10 @@ services:
       - "1883:1883"
     volumes:
       - ./infra/mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ./infra/mosquitto.passwd:/mosquitto/config/mosquitto.passwd
-      - ./infra/mosquitto.acl:/mosquitto/config/mosquitto.acl
+      # Bind mount (not a named volume) so apps/workers, running natively on
+      # the host, can read the plugin's auto-generated bootstrap admin
+      # password directly — see mqtt_dynsec.py.
+      - ./infra/mosquitto-dynsec-state:/mosquitto/config/dynsec
 
 volumes:
   postgres-data:

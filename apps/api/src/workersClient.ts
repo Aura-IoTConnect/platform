@@ -7,16 +7,20 @@ const WORKERS_API_TOKEN = process.env.WORKERS_API_TOKEN;
  * calls this replaces (see CLAUDE.md). Status/body are passed through as-is
  * so callers can forward workers' 503 ("agents not configured") verbatim.
  */
-export async function callWorkers(path: string, body: unknown): Promise<{ status: number; data: unknown }> {
+export async function callWorkers(
+  path: string,
+  body: unknown,
+  method: "POST" | "DELETE" = "POST",
+): Promise<{ status: number; data: unknown }> {
   let res: Response;
   try {
     res = await fetch(`${WORKERS_URL}${path}`, {
-      method: "POST",
+      method,
       headers: {
         "content-type": "application/json",
         ...(WORKERS_API_TOKEN ? { authorization: `Bearer ${WORKERS_API_TOKEN}` } : {}),
       },
-      body: JSON.stringify(body),
+      body: method === "DELETE" ? undefined : JSON.stringify(body),
     });
   } catch {
     // apps/workers unreachable (down, wrong WORKERS_URL, etc). This is

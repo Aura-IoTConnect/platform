@@ -25,6 +25,18 @@ function omitApiKeyHash<T extends { apiKeyHash: string | null }>(device: T): Omi
   return rest;
 }
 
+// Best-effort: MQTT provisioning is a nice-to-have layered on top of the
+// HTTP apiKeyHash (the source of truth), not a hard dependency — a device
+// still works over HTTP ingestion even if apps/workers or the broker is
+// down when this fires. Callers get a boolean back purely for UI feedback,
+// never a failed HTTP response.
+async function provisionMqttCredentials(deviceId: string, password: string): Promise<boolean> {
+  const { status } = await callWorkers(`/devices/${deviceId}/mqtt-credentials`, { password });
+  if (status >= 200 && status < 300) return true;
+  console.warn(`MQTT credential provisioning failed for device=${deviceId} (status=${status})`);
+  return false;
+}
+
 devicesRouter.get("/", async (_req, res) => {
   const devices = await prisma.device.findMany({
     include: { deviceType: { include: { vertical: true } } },
@@ -65,9 +77,10 @@ devicesRouter.post("/", async (req, res) => {
     data: { ...parsed.data, apiKeyHash: hashApiKey(apiKey) } as Prisma.DeviceUncheckedCreateInput,
     include: { deviceType: { include: { vertical: true } } },
   });
+  const mqttProvisioned = await provisionMqttCredentials(device.id, apiKey);
   // apiKey is shown exactly once — the device must store it now, since only
-  // its hash is kept from here on.
-  res.status(201).json({ ...omitApiKeyHash(device), apiKey });
+  // its hash is kept from here on. Same key works for HTTP and MQTT ingestion.
+  res.status(201).json({ ...omitApiKeyHash(device), apiKey, mqttProvisioned });
 });
 
 devicesRouter.post("/:id/rotate-key", async (req, res) => {
@@ -77,7 +90,8 @@ devicesRouter.post("/:id/rotate-key", async (req, res) => {
       where: { id: req.params.id },
       data: { apiKeyHash: hashApiKey(apiKey) },
     });
-    res.json({ ...omitApiKeyHash(device), apiKey });
+    const mqttProvisioned = await provisionMqttCredentials(device.id, apiKey);
+    res.json({ ...omitApiKeyHash(device), apiKey, mqttProvisioned });
   } catch {
     res.status(404).json({ error: "Device not found" });
   }
