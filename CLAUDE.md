@@ -210,6 +210,28 @@ fixed set of `type`-dispatched built-ins (the same convention
 `defaultWidgets` uses) — not a plugin loader or arbitrary-code stage. The
 seeded `grain-dryer` type's `grain_moisture` metric is the working example.
 
+### Platform observability (`GET /metrics` on both services)
+
+A different axis from `Alert`/`TelemetryReading`, which model the
+*industrial process* being monitored: these metrics are about the health
+of `apps/api` and `apps/workers` themselves. Both expose Prometheus text
+format — `apps/api/src/metrics.ts` (prom-client: default Node process
+metrics + `http_requests_total` / `http_request_duration_seconds` labeled
+by method / matched route template / status) and
+`apps/workers/app/metrics.py` (prometheus_client:
+`ingestion_readings_total{transport,outcome}`,
+`rule_evaluation_duration_seconds`, `alerts_created_total{severity}`,
+`mqtt_bridge_connected` 0/1). Both `/metrics` routes are deliberately
+outside the JWT / workers-token gates, same carve-out as `/health` — a
+scraper carries no user token, and it's ops data, not device/user data.
+
+Label sets are tiny and fixed on purpose: a Prometheus series exists per
+unique label combination, so device/rule/alert/user ids must never become
+labels. Nothing scrapes these yet — a Prometheus server + Grafana in
+`docker-compose.yml` is the obvious next step once there's an operational
+reason for it, not before (mined from Prometheus/Grafana's pull model;
+endpoints first, infra later).
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered
