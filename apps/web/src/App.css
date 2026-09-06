@@ -254,6 +254,53 @@
   width: 100%;
 }
 
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.widget {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.widget-label {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.line-chart-widget,
+.alarm-table-widget {
+  grid-column: 1 / -1;
+}
+
+.gauge-widget {
+  align-items: center;
+  text-align: center;
+}
+
+.gauge-value {
+  fill: var(--text-h);
+  font-size: 0.8rem;
+}
+
+.stat-tile-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.stat-tile-unit {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 .record-main {
   display: flex;
   flex-direction: column;

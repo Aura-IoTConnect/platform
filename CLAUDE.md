@@ -185,6 +185,31 @@ miniature (mining ThingsBoard for ideas worth porting, not its code).
   `apps/api` endpoint and shows the one-time credential — mirroring the
   existing device-apiKey reveal banner.
 
+### Ingest-time metric pipeline (`apps/workers/app/metric_pipeline.py`)
+
+One pre-processing step sits between a raw reading arriving and the
+persist → evaluate-rules control loop below, configured per metric entry in
+`DeviceType.metrics` (no schema migration — `metrics` is already JSON):
+
+- `transform: {type: "linear", factor, offset}` — `value*factor + offset`,
+  for sensors that report raw counts or the wrong unit (rules assume the
+  metric's declared unit).
+- `onOutOfRange: "pass" | "clamp" | "reject"` — checked against the entry's
+  `min`/`max` *after* the transform; default `pass` is the pre-existing
+  behavior. `reject` means the reading is neither persisted nor
+  rule-evaluated (HTTP ingestion returns `422`, MQTT logs a warning).
+  Non-finite values (NaN/inf) are always rejected regardless.
+- `loggingMode: "on-change"` + `deadband` — skips the `TelemetryReading`
+  insert when the value hasn't moved past `deadband` since the last
+  *stored* reading for that (device, metric). This thins history only:
+  `evaluate()` still runs on every reading, so alerting is unaffected.
+
+Concept mined from Telegraf/NiFi/Node-RED's staged transform pipelines and
+RapidSCADA/ScadaBR's per-point logging modes, deliberately reduced to a
+fixed set of `type`-dispatched built-ins (the same convention
+`defaultWidgets` uses) — not a plugin loader or arbitrary-code stage. The
+seeded `grain-dryer` type's `grain_moisture` metric is the working example.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered
@@ -260,6 +285,31 @@ variants, see `agents_routes.py`), but the dashboard triggers them through
 Auth above. Listing runs and submitting feedback also lives on `apps/api`
 (`GET /api/agents/runs`, `POST /api/agents/runs/:id/feedback`) since that's a
 plain DB read/write, no Claude access needed.
+
+### Dashboard widgets (`apps/web/src/widgets/`)
+
+A `DeviceType` can declare `defaultWidgets: Json` — an array of
+`{type, metricKey?, label?}` (`type` is `"line-chart" | "gauge" |
+"stat-tile" | "alarm-table"`; `metricKey` is required for all but
+`alarm-table`, which is bound to the device itself). `DeviceDetail.tsx`
+renders that config via `WidgetRenderer.tsx` instead of its original
+one-line-chart-per-metric loop, which is still the fallback for any device
+type that leaves `defaultWidgets` null/empty (mining ThingsBoard's
+dashboard/widget model for the idea worth porting — a widget's data source
+resolved declaratively rather than hardcoded — not its code or its full
+drag-and-drop dashboard editor, which is disproportionate at this
+platform's scale; see earlier conversation).
+
+Each widget type is its own small component (`LineChartWidget`,
+`GaugeWidget`, `StatTile`, `AlarmTableWidget`) — no charting library, same
+zero-dependency inline-SVG convention as the existing `LineChart.tsx`
+(`GaugeWidget` is an SVG radial progress ring, not an external gauge
+component). `AlarmTableWidget` fetches its own data
+(`GET /api/alerts?deviceId=`); the others reuse `DeviceDetail.tsx`'s
+already-fetched telemetry, grouped by metric. Three seeded device types
+(cold-storage-unit, grain-dryer, weather-station) declare `defaultWidgets`
+as a working example — adding it to more is a seed-data change, not a code
+change, same as adding a vertical.
 
 ## Commands
 

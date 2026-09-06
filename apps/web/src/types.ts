@@ -6,18 +6,44 @@ export interface Vertical {
   deviceTypes: DeviceType[]
 }
 
+export type WidgetType = 'line-chart' | 'gauge' | 'stat-tile' | 'alarm-table'
+
+export interface WidgetDef {
+  type: WidgetType
+  // Required for every type except 'alarm-table', which is bound to the
+  // device itself rather than one of its metrics.
+  metricKey?: string
+  label?: string
+}
+
 export interface DeviceType {
   id: string
   verticalId: string
   key: string
   name: string
   description: string
-  metrics: { key: string; label: string; unit: string; min?: number; max?: number }[]
+  metrics: {
+    key: string
+    label: string
+    unit: string
+    min?: number
+    max?: number
+    // Ingest-time policy, applied by apps/workers before persist/rule
+    // evaluation — see CLAUDE.md's "Ingest-time metric pipeline".
+    transform?: { type: 'linear'; factor?: number; offset?: number }
+    onOutOfRange?: 'pass' | 'clamp' | 'reject'
+    loggingMode?: 'always' | 'on-change'
+    deadband?: number
+  }[]
   vertical?: Vertical
   // Public lookup identifier for self-service device provisioning (see
   // CLAUDE.md) — null until an operator generates one. Never the secret
   // itself, which is only ever shown once, at generation time.
   provisionKey: string | null
+  // Which widgets to render for this device type's detail view, and in what
+  // order (see src/widgets/) — null/empty falls back to one line chart per
+  // metric (DeviceDetail.tsx).
+  defaultWidgets: WidgetDef[] | null
 }
 
 export interface Device {
