@@ -185,6 +185,31 @@ miniature (mining ThingsBoard for ideas worth porting, not its code).
   `apps/api` endpoint and shows the one-time credential — mirroring the
   existing device-apiKey reveal banner.
 
+### Ingest-time metric pipeline (`apps/workers/app/metric_pipeline.py`)
+
+One pre-processing step sits between a raw reading arriving and the
+persist → evaluate-rules control loop below, configured per metric entry in
+`DeviceType.metrics` (no schema migration — `metrics` is already JSON):
+
+- `transform: {type: "linear", factor, offset}` — `value*factor + offset`,
+  for sensors that report raw counts or the wrong unit (rules assume the
+  metric's declared unit).
+- `onOutOfRange: "pass" | "clamp" | "reject"` — checked against the entry's
+  `min`/`max` *after* the transform; default `pass` is the pre-existing
+  behavior. `reject` means the reading is neither persisted nor
+  rule-evaluated (HTTP ingestion returns `422`, MQTT logs a warning).
+  Non-finite values (NaN/inf) are always rejected regardless.
+- `loggingMode: "on-change"` + `deadband` — skips the `TelemetryReading`
+  insert when the value hasn't moved past `deadband` since the last
+  *stored* reading for that (device, metric). This thins history only:
+  `evaluate()` still runs on every reading, so alerting is unaffected.
+
+Concept mined from Telegraf/NiFi/Node-RED's staged transform pipelines and
+RapidSCADA/ScadaBR's per-point logging modes, deliberately reduced to a
+fixed set of `type`-dispatched built-ins (the same convention
+`defaultWidgets` uses) — not a plugin loader or arbitrary-code stage. The
+seeded `grain-dryer` type's `grain_moisture` metric is the working example.
+
 ### The two loops
 
 1. **Control loop** (SCADA-style, `apps/workers/app/rule_engine.py`, entered

@@ -9,6 +9,11 @@ interface MetricDef {
   unit: string;
   min?: number;
   max?: number;
+  // Optional ingest-time policy — see apps/workers/app/metric_pipeline.py.
+  transform?: { type: "linear"; factor?: number; offset?: number };
+  onOutOfRange?: "pass" | "clamp" | "reject";
+  loggingMode?: "always" | "on-change";
+  deadband?: number;
 }
 
 interface RuleDef {
@@ -58,7 +63,20 @@ const verticals: VerticalDef[] = [
         name: "Grain Dryer",
         description: "Monitors grain moisture and drying airflow temperature.",
         metrics: [
-          { key: "grain_moisture", label: "Grain Moisture", unit: "%", min: 0, max: 100 },
+          // Working example of the ingest-time metric pipeline (see
+          // apps/workers/app/metric_pipeline.py): a moisture probe can't
+          // physically read outside 0-100%, so clamp glitches instead of
+          // alerting on them, and only store history when it actually moves.
+          {
+            key: "grain_moisture",
+            label: "Grain Moisture",
+            unit: "%",
+            min: 0,
+            max: 100,
+            onOutOfRange: "clamp",
+            loggingMode: "on-change",
+            deadband: 0.5,
+          },
           { key: "air_temp", label: "Drying Air Temperature", unit: "°C", min: -10, max: 120 },
         ],
         rules: [
