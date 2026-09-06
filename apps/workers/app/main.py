@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from app.actuator_routes import router as actuator_router
 from app.agents_routes import router as agents_router
+from app.backtest_routes import router as backtest_router
 from app.device_mqtt_routes import router as device_mqtt_router
 from app.ingestion import router as ingestion_router
 from app.metrics import metrics_endpoint
@@ -44,6 +45,7 @@ app.include_router(agents_router)
 app.include_router(actuator_router)
 app.include_router(device_mqtt_router)
 app.include_router(provisioning_router)
+app.include_router(backtest_router)
 # Prometheus exposition for this service (see app/metrics.py). Left open like
 # /health — ops data, no device or user data.
 app.add_api_route("/metrics", metrics_endpoint, methods=["GET"])
