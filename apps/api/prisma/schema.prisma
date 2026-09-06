@@ -160,18 +160,29 @@ enum AlertStatus {
 }
 
 model Alert {
-  id         String        @id @default(cuid())
-  deviceId   String        @map("device_id")
-  device     Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  ruleId     String?       @map("rule_id")
-  rule       Rule?         @relation(fields: [ruleId], references: [id])
-  severity   AlertSeverity
-  message    String
-  status     AlertStatus   @default(OPEN)
-  createdAt  DateTime      @default(now()) @map("created_at")
-  resolvedAt DateTime?     @map("resolved_at")
-  agentRuns  AgentRun[]
+  id             String        @id @default(cuid())
+  deviceId       String        @map("device_id")
+  device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  ruleId         String?       @map("rule_id")
+  rule           Rule?         @relation(fields: [ruleId], references: [id])
+  severity       AlertSeverity
+  message        String
+  status         AlertStatus   @default(OPEN)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  resolvedAt     DateTime?     @map("resolved_at")
+  // Last time a notify/webhook action actually fired for this alert — lets
+  // the control loop re-notify on an unresolved breach after a cooldown
+  // window instead of either spamming every reading or never reminding
+  // again. Not touched by actuator dispatch (see rule_engine.py).
+  lastNotifiedAt DateTime?     @map("last_notified_at")
+  agentRuns      AgentRun[]
 
+  // One row per (device, rule) while OPEN or ACKNOWLEDGED — rule_engine.py
+  // looks this up to dedupe repeat breaches into the same alert instead of
+  // inserting a new row on every reading. Postgres doesn't support a
+  // WHERE-qualified @@unique in Prisma, so this is a plain composite index;
+  // the dedup guarantee lives in application logic (see evaluate()).
+  @@index([deviceId, ruleId, status])
   @@index([status, createdAt])
   @@map("alerts")
 }

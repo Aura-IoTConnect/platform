@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.agents import maybe_trigger_anomaly_explainer
 from app.db import devices, get_engine, new_id, telemetry_readings
 from app.rule_engine import evaluate
+from app.webhook_service import dispatch_webhook
 
 logger = logging.getLogger("telemetry_service")
 
@@ -51,7 +52,13 @@ async def ingest_reading(
         )
         created_alerts = await evaluate(conn, device_id, metric, value)
 
+    # Outside the transaction, same reason as the AI trigger below: neither
+    # is fast, guaranteed-local DB work, and this connection shouldn't sit
+    # open for the duration of a network call.
     for alert in created_alerts:
+        pending_webhook = alert["pendingWebhook"]
+        if pending_webhook is not None:
+            await dispatch_webhook(pending_webhook["url"], pending_webhook["payload"])
         if alert["severity"] == "CRITICAL":
             await maybe_trigger_anomaly_explainer(alert["id"])
 
