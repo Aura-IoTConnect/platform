@@ -27,6 +27,7 @@ model User {
   passwordHash String   @map("password_hash")
   role         UserRole @default(OPERATOR)
   createdAt    DateTime @default(now()) @map("created_at")
+  watchlist    WatchlistItem[]
 
   @@map("users")
 }
@@ -48,17 +49,44 @@ model Vertical {
 /// metric taxonomy (name/unit/range) that devices of this type report, so the
 /// same telemetry/rule/alert pipeline works generically across verticals.
 model DeviceType {
-  id          String   @id @default(cuid())
-  verticalId  String   @map("vertical_id")
-  vertical    Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
-  key         String
-  name        String
-  description String
+  id             String   @id @default(cuid())
+  verticalId     String   @map("vertical_id")
+  vertical       Vertical @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  key            String
+  name           String
+  description    String
   /// Array of { key, label, unit, min?, max? } describing expected metrics.
-  metrics     Json
-  devices     Device[]
-  rules       Rule[]
-  createdAt   DateTime @default(now()) @map("created_at")
+  /// Each entry may also carry an ingest-time policy, applied by
+  /// apps/workers/app/metric_pipeline.py before a reading is persisted or
+  /// rule-evaluated: transform?: {type:"linear", factor, offset};
+  /// onOutOfRange?: "pass"|"clamp"|"reject" (vs min/max, default pass);
+  /// loggingMode?: "always"|"on-change" + deadband?: number (thins stored
+  /// history only — rules still see every reading). See CLAUDE.md.
+  metrics        Json
+  /// Optional array of { type, metricKey?, label? } declaring which
+  /// dashboard widgets to render for devices of this type, and in what
+  /// order — see apps/web/src/widgets/. Null/empty falls back to the
+  /// original one-line-chart-per-metric behavior. `type` is one of
+  /// "line-chart" | "gauge" | "stat-tile" | "alarm-table" | "svg-mimic";
+  /// metricKey is required for all but "alarm-table" (bound to the device
+  /// itself) and "svg-mimic" (static SVG + `bindings` of element ids to
+  /// metrics — see apps/web/src/widgets/SvgMimicWidget.tsx).
+  defaultWidgets Json?    @map("default_widgets")
+  devices        Device[]
+  rules          Rule[]
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  // Self-service device provisioning (see CLAUDE.md's "Self-service device
+  // provisioning" section) — lets a device create its own Device row + get
+  // its own apiKey via apps/workers' POST /ingestion/provision, instead of
+  // an operator creating the Device row by hand first. provisionKey is a
+  // public-ish lookup identifier (like a client ID, meant to be embedded in
+  // firmware); provisionSecretHash is the SHA-256 hash of the actual proof
+  // of authorization, generated once via POST
+  // /api/device-types/:id/provisioning-secret and shown exactly then. Both
+  // null until an operator generates one — provisioning is opt-in per type.
+  provisionKey        String? @unique @map("provision_key")
+  provisionSecretHash String? @map("provision_secret_hash")
 
   @@unique([verticalId, key])
   @@map("device_types")
@@ -91,15 +119,20 @@ model Device {
   telemetry        TelemetryReading[]
   alerts           Alert[]
   actuatorCommands ActuatorCommand[]
+  watchlistItems   WatchlistItem[]
   createdAt        DateTime           @default(now()) @map("created_at")
 
   @@map("devices")
 }
 
 /// A single metric reading. Written by apps/workers as telemetry is ingested
-/// (HTTP or MQTT), never by apps/api.
+/// (HTTP or MQTT), never by apps/api. A TimescaleDB hypertable partitioned
+/// on `timestamp` (see the add_telemetry_readings_hypertable migration and
+/// CLAUDE.md's "Telemetry storage" section) — hence the composite primary
+/// key: create_hypertable requires the partitioning column to be part of
+/// any unique/primary key constraint on the table.
 model TelemetryReading {
-  id        String   @id @default(cuid())
+  id        String   @default(cuid())
   deviceId  String   @map("device_id")
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   metric    String
@@ -107,6 +140,7 @@ model TelemetryReading {
   unit      String?
   timestamp DateTime @default(now())
 
+  @@id([id, timestamp])
   @@index([deviceId, metric, timestamp])
   @@map("telemetry_readings")
 }
@@ -117,6 +151,11 @@ enum RuleOperator {
   LT
   LTE
   EQ
+  /// "Device silence" — not a per-reading comparison against `value` like
+  /// the rest; checked periodically instead (see
+  /// apps/workers/app/silence_monitor.py). `threshold` is minutes of
+  /// silence on `metric` before this fires.
+  SILENT_FOR
 
   @@map("rule_operator")
 }
@@ -259,4 +298,23 @@ model ActuatorCommand {
 
   @@index([deviceId, createdAt])
   @@map("actuator_commands")
+}
+
+/// One pinned (device, metric) pair on a user's personal watchlist — an
+/// operator-assembled, cross-device view (any device, any type), as opposed
+/// to DeviceType.defaultWidgets, which is an admin-authored per-type
+/// template. See CLAUDE.md's "Watchlist" section.
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String   @map("device_id")
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  metricKey String   @map("metric_key")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, deviceId, metricKey])
+  @@index([userId, sortOrder])
+  @@map("watchlist_items")
 }
