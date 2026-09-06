@@ -126,9 +126,13 @@ model Device {
 }
 
 /// A single metric reading. Written by apps/workers as telemetry is ingested
-/// (HTTP or MQTT), never by apps/api.
+/// (HTTP or MQTT), never by apps/api. A TimescaleDB hypertable partitioned
+/// on `timestamp` (see the add_telemetry_readings_hypertable migration and
+/// CLAUDE.md's "Telemetry storage" section) — hence the composite primary
+/// key: create_hypertable requires the partitioning column to be part of
+/// any unique/primary key constraint on the table.
 model TelemetryReading {
-  id        String   @id @default(cuid())
+  id        String   @default(cuid())
   deviceId  String   @map("device_id")
   device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   metric    String
@@ -136,6 +140,7 @@ model TelemetryReading {
   unit      String?
   timestamp DateTime @default(now())
 
+  @@id([id, timestamp])
   @@index([deviceId, metric, timestamp])
   @@map("telemetry_readings")
 }

@@ -399,6 +399,44 @@ type taxonomy and returns `409` on a duplicate pin. Each card reuses
 telemetry. `apps/workers` mirrors the table in `db.py` but never touches
 it. Mined from ScadaBR's Watch List.
 
+### Telemetry storage (TimescaleDB hypertable)
+
+`telemetry_readings` is a TimescaleDB hypertable partitioned on
+`timestamp`, not a plain Postgres table — `docker-compose.yml` and CI both
+run the `timescale/timescaledb:latest-pg16-oss` image instead of plain
+`postgres`. Deliberately the Apache-2.0-only build: it structurally cannot
+run TSL-licensed features (compression, continuous aggregates, retention
+policies — `add_retention_policy` fails outright with a license error on
+this image), so nothing here can accidentally depend on one. This is only
+today's hypertable-conversion step — no downsampling/rollups/retention
+exist yet, and adding them is a separate, deliberate decision (verified by
+hand against a real container before writing this, not assumed from docs).
+
+A **fresh** volume (new contributor, CI's ephemeral service container)
+just works: the image's own default config already sets
+`shared_preload_libraries = timescaledb`, so `CREATE EXTENSION
+timescaledb` in the migration succeeds immediately. An **existing** volume
+that was initialized by plain `postgres:16-alpine` (i.e. any dev
+environment from before this change) does not have that config and needs
+a one-time manual step before `npm run db:migrate --workspace=apps/api`
+will apply cleanly — `docker compose up -d` to switch the running
+container onto the new image against the same volume (data survives; only
+the config file is stale), then:
+
+```bash
+docker exec -it iotplatform-postgres-1 psql -U iotplatform -d iotplatform -c \
+  "ALTER SYSTEM SET shared_preload_libraries='timescaledb';"
+docker compose restart postgres
+```
+
+`TelemetryReading`'s primary key is `(id, timestamp)`, not `id` alone —
+`create_hypertable` requires the partitioning column to be part of any
+unique/primary key constraint on the table (verified directly: attempting
+it against a single-column `id` PK fails with "cannot create a unique
+index without the column \"timestamp\""). Nothing reads/writes by
+`TelemetryReading.id` alone anywhere in the codebase, so this is a
+schema-only widening, not a behavior change.
+
 ## Commands
 
 ```bash
