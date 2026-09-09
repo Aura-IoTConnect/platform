@@ -80,6 +80,10 @@ export interface Device {
   tags: string[]
   siteId: string | null
   site: Site | null
+  // Liveness — see CLAUDE.md's "Liveness signal & Devices tab search"
+  // section. Read-only from the dashboard: only apps/workers stamps it,
+  // on telemetry ingestion or POST /ingestion/heartbeat.
+  lastSeenAt: string | null
 }
 
 export interface Site {

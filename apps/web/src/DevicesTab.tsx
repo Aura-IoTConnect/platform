@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiGet, apiGetText, apiSend } from './api'
 import { DeviceDetail } from './DeviceDetail'
+import { livenessBadgeText, livenessLabel, livenessState } from './liveness'
 import { SitesManager } from './SitesManager'
 import type { Device, DeviceImportResult, Vertical } from './types'
+
+type StatusFilter = 'ALL' | Device['status']
+type SortBy = 'created' | 'name' | 'status' | 'lastSeenAt'
 
 export function DevicesTab() {
   const [devices, setDevices] = useState<Device[]>([])
@@ -21,6 +25,13 @@ export function DevicesTab() {
   const [importResult, setImportResult] = useState<DeviceImportResult | null>(null)
   const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Search/filter/sort — client-side over the already-fetched device list
+  // (small fleets, no pagination anywhere else in this dashboard either).
+  // See CLAUDE.md's "Liveness signal & Devices tab search" section.
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const [sortBy, setSortBy] = useState<SortBy>('created')
 
   const load = () => {
     setLoading(true)
@@ -112,6 +123,43 @@ export function DevicesTab() {
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
+
+  const visibleDevices = useMemo(() => {
+    const needle = search.trim().toLowerCase()
+    const filtered = devices.filter((d) => {
+      if (statusFilter !== 'ALL' && d.status !== statusFilter) return false
+      if (!needle) return true
+      const haystack = [
+        d.name,
+        d.location ?? '',
+        d.deviceType.name,
+        d.deviceType.vertical.name,
+        d.site?.name ?? '',
+        ...d.tags,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return haystack.includes(needle)
+    })
+
+    const sorted = [...filtered]
+    if (sortBy === 'name') {
+      sorted.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (sortBy === 'status') {
+      sorted.sort((a, b) => a.status.localeCompare(b.status) || a.name.localeCompare(b.name))
+    } else if (sortBy === 'lastSeenAt') {
+      // Most-recently-seen first; devices that have never reported sort last.
+      sorted.sort((a, b) => {
+        if (!a.lastSeenAt && !b.lastSeenAt) return a.name.localeCompare(b.name)
+        if (!a.lastSeenAt) return 1
+        if (!b.lastSeenAt) return -1
+        return new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime()
+      })
+    }
+    // 'created' needs no client-side sort — GET /api/devices already
+    // returns newest-first.
+    return sorted
+  }, [devices, search, statusFilter, sortBy])
 
   const selectedDevice = devices.find((d) => d.id === selectedId) ?? null
   const selectedDeviceType = verticals
@@ -241,13 +289,36 @@ export function DevicesTab() {
         />
       )}
 
+      <div className="device-form devices-toolbar">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, location, type, tag, site…"
+        />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+          <option value="ALL">All statuses</option>
+          <option value="ONLINE">Online</option>
+          <option value="OFFLINE">Offline</option>
+          <option value="MAINTENANCE">Maintenance</option>
+        </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+          <option value="created">Newest first</option>
+          <option value="name">Name</option>
+          <option value="status">Status</option>
+          <option value="lastSeenAt">Last seen</option>
+        </select>
+      </div>
+
       {loading ? (
         <p>Loading…</p>
       ) : devices.length === 0 ? (
         <p>No devices yet.</p>
+      ) : visibleDevices.length === 0 ? (
+        <p className="hint">No devices match your search/filter.</p>
       ) : (
         <ul className="record-list">
-          {devices.map((device) => (
+          {visibleDevices.map((device) => (
             <li key={device.id} className="clickable" onClick={() => setSelectedId(device.id)}>
               <div className="record-main">
                 <span className="record-title">{device.name}</span>
@@ -270,7 +341,15 @@ export function DevicesTab() {
                   </div>
                 )}
               </div>
-              <span className={`status-pill status-${device.status.toLowerCase()}`}>{device.status}</span>
+              <div className="record-actions-column">
+                <span className={`status-pill status-${device.status.toLowerCase()}`}>{device.status}</span>
+                <span
+                  className={`liveness-pill liveness-${livenessState(device.lastSeenAt)}`}
+                  title={livenessLabel(device.lastSeenAt)}
+                >
+                  {livenessBadgeText(device.lastSeenAt)}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

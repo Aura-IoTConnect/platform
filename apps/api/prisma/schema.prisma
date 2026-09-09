@@ -153,6 +153,16 @@ model Device {
   siteId String?  @map("site_id")
   site   Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
+  // Liveness — a real heartbeat, distinct from `status` (operator/rule-set,
+  // never auto-updated) and from TelemetryReading (per-metric, only exists
+  // for metrics a device actually reports). apps/workers stamps this on
+  // every successful device-authenticated contact: telemetry ingestion
+  // (HTTP or MQTT) or a standalone POST /ingestion/heartbeat for devices
+  // with nothing to report right now. apps/api never writes it — read-only
+  // from this side. See CLAUDE.md's "Liveness signal & Devices tab search"
+  // section.
+  lastSeenAt DateTime? @map("last_seen_at")
+
   @@index([parentDeviceId])
   @@index([siteId])
   @@map("devices")
