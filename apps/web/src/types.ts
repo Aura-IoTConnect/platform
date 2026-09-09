@@ -62,6 +62,21 @@ export interface Device {
   status: 'ONLINE' | 'OFFLINE' | 'MAINTENANCE'
   createdAt: string
   deviceType: DeviceType & { vertical: Vertical }
+  // Lifecycle/serviceability metadata — all optional, set via PATCH
+  // /api/devices/:id after creation. See CLAUDE.md.
+  firmwareVersion: string | null
+  hardwareModel: string | null
+  manufacturer: string | null
+  commissionedAt: string | null
+  warrantyExpiresAt: string | null
+}
+
+export interface ServiceLogEntry {
+  id: string
+  deviceId: string
+  note: string
+  createdBy: string | null
+  createdAt: string
 }
 
 export interface Alert {

@@ -12,6 +12,24 @@ const createDeviceSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+// Device creation stays minimal (above); lifecycle/serviceability fields
+// are set afterward via PATCH — a device is rarely commissioned with a
+// known firmware version/warranty date at the exact moment its row is
+// created. All optional, all independently updatable.
+const updateDeviceSchema = z.object({
+  name: z.string().min(1).optional(),
+  location: z.string().nullable().optional(),
+  firmwareVersion: z.string().nullable().optional(),
+  hardwareModel: z.string().nullable().optional(),
+  manufacturer: z.string().nullable().optional(),
+  commissionedAt: z.coerce.date().nullable().optional(),
+  warrantyExpiresAt: z.coerce.date().nullable().optional(),
+});
+
+const serviceLogEntrySchema = z.object({
+  note: z.string().min(1),
+});
+
 const actuatorCommandSchema = z.object({
   command: z.string().min(1),
   value: z.unknown().optional(),
@@ -107,6 +125,60 @@ devicesRouter.post("/:id/rotate-key", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Device not found" });
   }
+});
+
+// Lifecycle/serviceability metadata update — the one generic way to change
+// an existing device's editable fields (name, location, firmware/hardware
+// info, commissioning/warranty dates). See CLAUDE.md's "Device lifecycle &
+// service log" section.
+devicesRouter.patch("/:id", async (req, res) => {
+  const parsed = updateDeviceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const device = await prisma.device.update({
+      where: { id: req.params.id },
+      data: parsed.data,
+      include: { deviceType: { include: { vertical: true } } },
+    });
+    res.json(omitNestedProvisionSecretHash(omitApiKeyHash(device)));
+  } catch {
+    res.status(404).json({ error: "Device not found" });
+  }
+});
+
+devicesRouter.get("/:id/service-log", async (req, res) => {
+  const known = await prisma.device.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!known) {
+    res.status(404).json({ error: "Device not found" });
+    return;
+  }
+  const entries = await prisma.serviceLogEntry.findMany({
+    where: { deviceId: req.params.id },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(entries);
+});
+
+devicesRouter.post("/:id/service-log", async (req, res) => {
+  const parsed = serviceLogEntrySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const known = await prisma.device.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!known) {
+    res.status(404).json({ error: "Device not found" });
+    return;
+  }
+
+  const entry = await prisma.serviceLogEntry.create({
+    data: { deviceId: req.params.id, note: parsed.data.note, createdBy: req.user!.email },
+  });
+  res.status(201).json(entry);
 });
 
 // Proxies to apps/workers server-side (WORKERS_API_TOKEN never reaches the

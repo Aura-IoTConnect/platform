@@ -247,6 +247,59 @@
   font-size: 0.85rem;
 }
 
+.device-info-panel,
+.service-log-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.device-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.device-info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.device-info-grid dt {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.device-info-grid dd {
+  margin: 0;
+}
+
+.device-info-form {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.device-info-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  width: 100%;
+}
+
+.device-info-date-label input {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+
 .rules-panel {
   display: flex;
   flex-direction: column;

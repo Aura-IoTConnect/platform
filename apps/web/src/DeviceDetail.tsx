@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
+import { DeviceInfoPanel } from './device-panels/DeviceInfoPanel'
+import { ServiceLogPanel } from './device-panels/ServiceLogPanel'
 import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
@@ -176,6 +178,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
 
       {agentNotice && <p className="hint">{agentNotice}</p>}
 
+      <DeviceInfoPanel device={device} />
+
       {newApiKey && (
         <div className="api-key-banner">
           <p>New API key — save it now, it won't be shown again (the old key stops working immediately):</p>
@@ -185,6 +189,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
           </button>
         </div>
       )}
+
+      <ServiceLogPanel deviceId={device.id} />
 
       {rules.length > 0 && (
         <div className="rules-panel">

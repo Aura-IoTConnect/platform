@@ -63,6 +63,23 @@ devices = Table(
     Column("metadata", JSONB),
     Column("api_key_hash", String),
     Column("created_at", DateTime(timezone=True)),
+    Column("firmware_version", String),
+    Column("hardware_model", String),
+    Column("manufacturer", String),
+    Column("commissioned_at", DateTime(timezone=True)),
+    Column("warranty_expires_at", DateTime(timezone=True)),
+)
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes service log rows today — this is a dashboard/apps/api concern.
+service_log_entries = Table(
+    "service_log_entries",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("note", String),
+    Column("created_by", String),
+    Column("created_at", DateTime(timezone=True)),
 )
 
 device_types = Table(

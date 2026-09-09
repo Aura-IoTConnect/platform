@@ -469,6 +469,31 @@ index without the column \"timestamp\""). Nothing reads/writes by
 `TelemetryReading.id` alone anywhere in the codebase, so this is a
 schema-only widening, not a behavior change.
 
+### Device lifecycle & service log
+
+Device creation stays minimal (name + type + location); a second layer of
+optional, independently-settable fields covers what an operator learns
+*after* a device is deployed:
+
+- **Lifecycle metadata** — `Device.firmwareVersion`, `hardwareModel`,
+  `manufacturer`, `commissionedAt`, `warrantyExpiresAt`, all set via
+  `PATCH /api/devices/:id` (a partial update — send only the fields
+  changing). Shown/edited in `DeviceDetail.tsx`'s "Device info" panel
+  (`device-panels/DeviceInfoPanel.tsx`), which keeps its own local copy of
+  the device rather than lifting state to the parent list — a minor,
+  accepted staleness tradeoff (the same one `rotate-key`'s one-time-reveal
+  banner already has) rather than plumbing a setter through `DevicesTab.tsx`.
+- **`ServiceLogEntry`** — a free-text, timestamped maintenance history per
+  device (`GET`/`POST /api/devices/:id/service-log`), stamped with the
+  calling JWT user's email (`createdBy`, a plain string — this doesn't
+  depend on the audit-fields work on a sibling branch, same reasoning as
+  the device-silence alarm's standalone dedup). Shown in
+  `device-panels/ServiceLogPanel.tsx`.
+
+`apps/workers/app/db.py` mirrors both (new `devices` columns +
+`service_log_entries` table) but never reads or writes either — pure
+apps/api/dashboard concerns, per the schema-ownership rule.
+
 ## Commands
 
 ```bash
