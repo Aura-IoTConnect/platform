@@ -3,6 +3,7 @@ import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import { DeviceInfoPanel } from './device-panels/DeviceInfoPanel'
 import { GatewayPanel } from './device-panels/GatewayPanel'
+import { GroupingPanel } from './device-panels/GroupingPanel'
 import { ServiceLogPanel } from './device-panels/ServiceLogPanel'
 import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
@@ -190,6 +191,8 @@ export function DeviceDetail({
       {agentNotice && <p className="hint">{agentNotice}</p>}
 
       <DeviceInfoPanel device={device} />
+
+      <GroupingPanel device={device} />
 
       <GatewayPanel device={device} allDevices={allDevices} onChanged={onChanged} />
 

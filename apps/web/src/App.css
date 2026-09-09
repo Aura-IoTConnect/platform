@@ -249,12 +249,39 @@
 
 .device-info-panel,
 .service-log-panel,
-.gateway-panel {
+.gateway-panel,
+.grouping-panel {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border);
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag-chip {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.sites-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sites-manager-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .device-info-header {

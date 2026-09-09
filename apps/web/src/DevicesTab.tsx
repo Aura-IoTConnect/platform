@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { apiGet, apiSend } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { apiGet, apiGetText, apiSend } from './api'
 import { DeviceDetail } from './DeviceDetail'
-import type { Device, Vertical } from './types'
+import { SitesManager } from './SitesManager'
+import type { Device, DeviceImportResult, Vertical } from './types'
 
 export function DevicesTab() {
   const [devices, setDevices] = useState<Device[]>([])
@@ -17,6 +18,9 @@ export function DevicesTab() {
     provisionKey: string
     provisionSecret: string
   } | null>(null)
+  const [importResult, setImportResult] = useState<DeviceImportResult | null>(null)
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     setLoading(true)
@@ -71,6 +75,44 @@ export function DevicesTab() {
     }
   }
 
+  // CSV export/import — a second onboarding/reporting path alongside the
+  // one-at-a-time form above and self-service provisioning. See CLAUDE.md's
+  // "Grouping, tags & bulk import/export" section.
+  const handleExport = async () => {
+    setError(null)
+    try {
+      const csv = await apiGetText('/api/devices/export')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'devices.csv'
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Failed to export devices')
+    }
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setError(null)
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const csv = await file.text()
+      const result = await apiSend<DeviceImportResult>('/api/devices/import', 'POST', { csv })
+      setImportResult(result)
+      load()
+    } catch {
+      setError('Failed to import devices')
+    } finally {
+      setImporting(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const selectedDevice = devices.find((d) => d.id === selectedId) ?? null
   const selectedDeviceType = verticals
     .flatMap((v) => v.deviceTypes)
@@ -104,6 +146,41 @@ export function DevicesTab() {
         />
         <button type="submit">Add device</button>
       </form>
+
+      <div className="device-form">
+        <button type="button" onClick={handleExport}>
+          Export CSV
+        </button>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+          {importing ? 'Importing…' : 'Import CSV'}
+        </button>
+        <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} hidden />
+        <SitesManager />
+      </div>
+
+      {importResult && (
+        <div className="api-key-banner">
+          <p>
+            Import finished — <strong>{importResult.created}</strong> created
+            {importResult.failed > 0 ? `, ${importResult.failed} failed` : ''}.
+          </p>
+          {importResult.failed > 0 && (
+            <ul className="record-list">
+              {importResult.results
+                .filter((r) => !r.ok)
+                .map((r) => (
+                  <li key={r.row}>
+                    <span className="record-title">Row {r.row}</span>
+                    <span className="record-subtitle">{r.error}</span>
+                  </li>
+                ))}
+            </ul>
+          )}
+          <button type="button" onClick={() => setImportResult(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {selectedDeviceType && (
         <p className="hint">
@@ -177,11 +254,21 @@ export function DevicesTab() {
                 <span className="record-subtitle">
                   {device.deviceType.vertical.name} · {device.deviceType.name}
                   {device.location ? ` · ${device.location}` : ''}
+                  {device.site ? ` · ${device.site.name}` : ''}
                   {device.childDevices.length > 0
                     ? ` · gateway (${device.childDevices.length} device${device.childDevices.length === 1 ? '' : 's'})`
                     : ''}
                   {device.parentDeviceId ? ' · sub-device' : ''}
                 </span>
+                {device.tags.length > 0 && (
+                  <div className="tag-list">
+                    {device.tags.map((tag) => (
+                      <span key={tag} className="tag-chip">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <span className={`status-pill status-${device.status.toLowerCase()}`}>{device.status}</span>
             </li>
