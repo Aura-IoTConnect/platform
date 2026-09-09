@@ -132,6 +132,17 @@ model Device {
   commissionedAt    DateTime? @map("commissioned_at")
   warrantyExpiresAt DateTime? @map("warranty_expires_at")
 
+  // Gateway/child hierarchy — one level only (a device with childDevices
+  // cannot itself have a parentDeviceId, and a device cannot be attached to
+  // a device that already has a parent), enforced in apps/api's PATCH
+  // handler, not by the schema. onDelete: SetNull so a deleted gateway
+  // orphans its children rather than cascade-deleting them. See CLAUDE.md's
+  // "Gateway/child device hierarchy" section.
+  parentDeviceId String?  @map("parent_device_id")
+  parentDevice   Device?  @relation("DeviceHierarchy", fields: [parentDeviceId], references: [id], onDelete: SetNull)
+  childDevices   Device[] @relation("DeviceHierarchy")
+
+  @@index([parentDeviceId])
   @@map("devices")
 }
 

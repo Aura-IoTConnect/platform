@@ -24,6 +24,7 @@ const updateDeviceSchema = z.object({
   manufacturer: z.string().nullable().optional(),
   commissionedAt: z.coerce.date().nullable().optional(),
   warrantyExpiresAt: z.coerce.date().nullable().optional(),
+  parentDeviceId: z.string().min(1).nullable().optional(),
 });
 
 const serviceLogEntrySchema = z.object({
@@ -55,6 +56,35 @@ function omitNestedProvisionSecretHash<T extends { deviceType: { provisionSecret
   return { ...device, deviceType: deviceTypeRest } as T & { deviceType: Omit<T["deviceType"], "provisionSecretHash"> };
 }
 
+// Gateway/child hierarchy is deliberately one level only — a gateway's own
+// `parentDeviceId` must be null, and a device that already has children
+// can't be attached under another device. Enforced here rather than in the
+// schema (Postgres has no clean "self-referential depth <= 1" constraint).
+// Returns an error string, or null if the assignment is valid.
+async function validateParentAssignment(deviceId: string, parentDeviceId: string): Promise<string | null> {
+  if (parentDeviceId === deviceId) {
+    return "A device cannot be its own parent";
+  }
+  const parent = await prisma.device.findUnique({
+    where: { id: parentDeviceId },
+    select: { parentDeviceId: true },
+  });
+  if (!parent) {
+    return "Unknown parentDeviceId";
+  }
+  if (parent.parentDeviceId !== null) {
+    return "parentDeviceId already has a parent of its own — hierarchy is one level only";
+  }
+  const existingChild = await prisma.device.findFirst({
+    where: { parentDeviceId: deviceId },
+    select: { id: true },
+  });
+  if (existingChild) {
+    return "This device already has child devices and cannot itself become a child";
+  }
+  return null;
+}
+
 // Best-effort: MQTT provisioning is a nice-to-have layered on top of the
 // HTTP apiKeyHash (the source of truth), not a hard dependency — a device
 // still works over HTTP ingestion even if apps/workers or the broker is
@@ -67,9 +97,14 @@ async function provisionMqttCredentials(deviceId: string, password: string): Pro
   return false;
 }
 
+// childDevices is summary-only (id/name/status) — a full nested Device would
+// re-leak apiKeyHash/provisionSecretHash and isn't needed for the gateway UI,
+// which just lists attached sub-devices by name/status.
+const childDeviceSummary = { select: { id: true, name: true, status: true } };
+
 devicesRouter.get("/", async (_req, res) => {
   const devices = await prisma.device.findMany({
-    include: { deviceType: { include: { vertical: true } } },
+    include: { deviceType: { include: { vertical: true } }, childDevices: childDeviceSummary },
     orderBy: { createdAt: "desc" },
   });
   res.json(devices.map(omitApiKeyHash).map(omitNestedProvisionSecretHash));
@@ -78,7 +113,7 @@ devicesRouter.get("/", async (_req, res) => {
 devicesRouter.get("/:id", async (req, res) => {
   const device = await prisma.device.findUnique({
     where: { id: req.params.id },
-    include: { deviceType: { include: { vertical: true } } },
+    include: { deviceType: { include: { vertical: true } }, childDevices: childDeviceSummary },
   });
   if (!device) {
     res.status(404).json({ error: "Device not found" });
@@ -138,11 +173,19 @@ devicesRouter.patch("/:id", async (req, res) => {
     return;
   }
 
+  if (typeof parsed.data.parentDeviceId === "string") {
+    const error = await validateParentAssignment(req.params.id, parsed.data.parentDeviceId);
+    if (error) {
+      res.status(400).json({ error });
+      return;
+    }
+  }
+
   try {
     const device = await prisma.device.update({
       where: { id: req.params.id },
       data: parsed.data,
-      include: { deviceType: { include: { vertical: true } } },
+      include: { deviceType: { include: { vertical: true } }, childDevices: childDeviceSummary },
     });
     res.json(omitNestedProvisionSecretHash(omitApiKeyHash(device)));
   } catch {

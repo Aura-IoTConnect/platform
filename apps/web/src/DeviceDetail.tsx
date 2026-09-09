@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import { DeviceInfoPanel } from './device-panels/DeviceInfoPanel'
+import { GatewayPanel } from './device-panels/GatewayPanel'
 import { ServiceLogPanel } from './device-panels/ServiceLogPanel'
 import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
@@ -30,7 +31,17 @@ function agentErrorMessage(err: unknown): string {
   return 'Agent request failed — is apps/workers running?'
 }
 
-export function DeviceDetail({ device, onClose }: { device: Device; onClose: () => void }) {
+export function DeviceDetail({
+  device,
+  allDevices,
+  onClose,
+  onChanged,
+}: {
+  device: Device
+  allDevices: Device[]
+  onClose: () => void
+  onChanged: () => void
+}) {
   const [readings, setReadings] = useState<Reading[]>([])
   const [loading, setLoading] = useState(true)
   const [suggesting, setSuggesting] = useState(false)
@@ -179,6 +190,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
       {agentNotice && <p className="hint">{agentNotice}</p>}
 
       <DeviceInfoPanel device={device} />
+
+      <GatewayPanel device={device} allDevices={allDevices} onChanged={onChanged} />
 
       {newApiKey && (
         <div className="api-key-banner">

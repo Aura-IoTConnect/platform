@@ -248,7 +248,8 @@
 }
 
 .device-info-panel,
-.service-log-panel {
+.service-log-panel,
+.gateway-panel {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

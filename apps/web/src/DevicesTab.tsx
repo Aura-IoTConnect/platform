@@ -155,7 +155,14 @@ export function DevicesTab() {
         </div>
       )}
 
-      {selectedDevice && <DeviceDetail device={selectedDevice} onClose={() => setSelectedId(null)} />}
+      {selectedDevice && (
+        <DeviceDetail
+          device={selectedDevice}
+          allDevices={devices}
+          onClose={() => setSelectedId(null)}
+          onChanged={load}
+        />
+      )}
 
       {loading ? (
         <p>Loading…</p>
@@ -170,6 +177,10 @@ export function DevicesTab() {
                 <span className="record-subtitle">
                   {device.deviceType.vertical.name} · {device.deviceType.name}
                   {device.location ? ` · ${device.location}` : ''}
+                  {device.childDevices.length > 0
+                    ? ` · gateway (${device.childDevices.length} device${device.childDevices.length === 1 ? '' : 's'})`
+                    : ''}
+                  {device.parentDeviceId ? ' · sub-device' : ''}
                 </span>
               </div>
               <span className={`status-pill status-${device.status.toLowerCase()}`}>{device.status}</span>

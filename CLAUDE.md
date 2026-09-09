@@ -494,6 +494,46 @@ optional, independently-settable fields covers what an operator learns
 `service_log_entries` table) but never reads or writes either — pure
 apps/api/dashboard concerns, per the schema-ownership rule.
 
+### Gateway/child device hierarchy
+
+`Device.parentDeviceId` (self-relation, `Device.childDevices`) lets one
+`Device` row represent a gateway/hub with attached sub-devices — the real
+multi-sensor pattern most industrial gateways use (an IoT controller with
+several wired sensors behind it, one MQTT/HTTP identity for provisioning
+purposes, but each sensor still wants its own telemetry/rules/alerts).
+
+- **One level only, enforced in `apps/api`, not the schema** — Postgres has
+  no clean "self-referential depth ≤ 1" constraint, so `PATCH
+  /api/devices/:id`'s `validateParentAssignment` (`src/routes/devices.ts`)
+  checks it explicitly: a device can't be its own parent, the target
+  `parentDeviceId` must itself have no parent (no chains), and a device that
+  already has children can't become a child (no children-of-children). All
+  three fail as a plain `400`, not a 500 — a device management UI action
+  that's just invalid, not a server error.
+- **`onDelete: SetNull`** on the self-relation — deleting a gateway orphans
+  its children (sets their `parentDeviceId` back to null) rather than
+  cascade-deleting them; a child device's own `Device` row, telemetry, and
+  alert history are independent of its gateway assignment.
+- `GET /api/devices` and `GET /api/devices/:id` both include `childDevices`
+  as a summary (`id`/`name`/`status` only, via `childDeviceSummary` — not a
+  full nested `Device`, which would re-leak `apiKeyHash`/
+  `provisionSecretHash` through the same nesting bug this session already
+  fixed once for `deviceType`). `PATCH` accepts/returns `parentDeviceId`
+  directly.
+- **`device-panels/GatewayPanel.tsx`** — same self-contained-panel
+  convention as `DeviceInfoPanel`/`ServiceLogPanel`, but needs the *other*
+  devices to populate its "attach to gateway" / "add child" dropdowns, so
+  `DevicesTab.tsx` passes its already-fetched `devices` list down through
+  `DeviceDetail` as `allDevices`, plus an `onChanged` callback (`load`) the
+  panel calls after every PATCH instead of keeping its own patched-up local
+  copy — simpler than reconciling a locally-optimistic `childDevices` array
+  against a list of full `Device` objects that also needs to reflect the
+  change. The panel filters candidates to what the server would actually
+  accept (no parent already / no children already) so the dropdowns don't
+  offer choices that would just 400.
+- `apps/workers/app/db.py` mirrors the new `parent_device_id` column but
+  never reads or writes it — same as every other lifecycle field.
+
 ## Commands
 
 ```bash

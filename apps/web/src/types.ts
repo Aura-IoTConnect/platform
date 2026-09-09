@@ -69,6 +69,11 @@ export interface Device {
   manufacturer: string | null
   commissionedAt: string | null
   warrantyExpiresAt: string | null
+  // Gateway/child hierarchy — one level only. parentDeviceId is set via PATCH
+  // /api/devices/:id; childDevices is a summary (id/name/status), not full
+  // Device objects. See CLAUDE.md's "Gateway/child device hierarchy" section.
+  parentDeviceId: string | null
+  childDevices: { id: string; name: string; status: 'ONLINE' | 'OFFLINE' | 'MAINTENANCE' }[]
 }
 
 export interface ServiceLogEntry {

@@ -68,6 +68,7 @@ devices = Table(
     Column("manufacturer", String),
     Column("commissioned_at", DateTime(timezone=True)),
     Column("warranty_expires_at", DateTime(timezone=True)),
+    Column("parent_device_id", String, ForeignKey("devices.id")),
 )
 
 # Mirrored for completeness (schema-ownership rule); apps/workers never
