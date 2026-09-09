@@ -20,6 +20,9 @@ agents) works across every industry.
   rule (control-loop) engine, and AI agent execution — decoupled from the Node
   API so protocol/data workloads (MQTT, LLM calls) don't block the request/
   response API. Not behind apps/api's JWT auth (see Auth below).
+- `apps/marketing` — a standalone static marketing/landing page (plain
+  HTML/CSS/JS, no build step, not an npm workspace). See "Marketing landing
+  page" below.
 - `infra/mosquitto.conf` — local MQTT broker config used by `docker-compose.yml`.
 
 ### Data model (generic engine)
@@ -469,6 +472,40 @@ index without the column \"timestamp\""). Nothing reads/writes by
 `TelemetryReading.id` alone anywhere in the codebase, so this is a
 schema-only widening, not a behavior change.
 
+### Marketing landing page
+
+`apps/marketing/` is a public-facing landing page — deliberately **not**
+part of the authenticated dashboard (`apps/web`, behind `Login.tsx`) and
+**not** an npm workspace: it's plain `index.html` + `styles.css` +
+`script.js`, no build step, no framework, no backend of its own. It has
+nothing to do with the device/telemetry/rules pipeline the rest of this
+codebase implements — it's marketing copy about that pipeline, so it stays
+fully decoupled (no shared components, no shared build) rather than
+growing a "public route" inside `apps/web`.
+
+- **Visual consistency without a shared build**: `styles.css` copies the
+  exact CSS custom-property values from `apps/web/src/index.css` (light +
+  dark via `prefers-color-scheme`) by hand, with a comment noting they need
+  to be kept in sync manually if the dashboard's palette changes — the
+  simplest option for one small, rarely-changed set of tokens, given the
+  two apps don't share a build pipeline to import from.
+- **`data-dashboard-link`**: every button that should point at the
+  dashboard carries this attribute instead of a hard-coded `href`;
+  `script.js` fills in one `DASHBOARD_URL` constant at load time, since a
+  static site has no way to know where `apps/web` is actually deployed.
+  Edit that one constant per environment rather than hunting down every
+  link.
+- **No fake contact form** — a form with nothing to submit to would be
+  worse than no form; the footer's `mailto:` link is honest about what
+  actually exists.
+- **Verticals list** is hand-copied from the seeded vertical labels
+  (`apps/api/prisma/seed.ts` / the Devices tab's vertical names) — update
+  it by hand if verticals are added or renamed; there's no shared source
+  of truth between a static marketing page and the seeded database.
+- `npm run dev:marketing` (root `package.json`) serves it locally via
+  `npx serve` — not a project dependency, since a static page needs
+  nothing beyond a file server.
+
 ## Commands
 
 ```bash
@@ -481,6 +518,7 @@ npm run db:migrate --workspace=apps/api   # apply Prisma schema to Postgres
 npm run db:seed --workspace=apps/api      # seed verticals/device types/rules/agents(/admin user)
 npm run dev:api                   # apps/api on :4000
 npm run dev:web                   # apps/web on :5173
+npm run dev:marketing             # apps/marketing on :5175 (static, via npx serve)
 npm run build                     # builds api then web
 npm run lint                      # lints api then web
 

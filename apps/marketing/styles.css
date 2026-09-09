@@ -1,0 +1,324 @@
+/* Tokens copied verbatim from apps/web/src/index.css (light + dark via
+   prefers-color-scheme) — this page is deliberately a separate static site
+   (no shared build, see CLAUDE.md's "Marketing landing page" section), but
+   it should still look like the same product as the dashboard it links to.
+   Keep these in sync by hand if the dashboard's palette changes. */
+:root {
+  --text: #6b6375;
+  --text-h: #08060d;
+  --text-secondary: #8b8591;
+  --bg: #fff;
+  --bg-raised: #fafafa;
+  --border: #e5e4e7;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-pill: 999px;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --text-secondary: #8b8a91;
+    --bg: #16171d;
+    --bg-raised: #1c1d24;
+    --border: #2e303a;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--heading);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+  margin: 0 0 0.5rem;
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+code {
+  font-family: ui-monospace, Consolas, monospace;
+  background: var(--accent-bg);
+  color: var(--accent);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9em;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --- Header / nav --- */
+
+.site-header {
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.nav {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-h);
+  text-decoration: none;
+  font-size: 1.05rem;
+}
+
+.brand-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), var(--accent-border));
+  display: inline-block;
+}
+
+.nav-links {
+  display: flex;
+  gap: 1.25rem;
+  flex: 1;
+}
+
+.nav-links a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.nav-links a:hover {
+  color: var(--accent);
+}
+
+/* --- Buttons --- */
+
+.button {
+  display: inline-block;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button-primary:hover {
+  opacity: 0.9;
+}
+
+.button-ghost {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.button-ghost:hover {
+  background: var(--accent-border);
+}
+
+/* --- Hero --- */
+
+.hero {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 4rem;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: clamp(2.1rem, 5vw, 3.2rem);
+  letter-spacing: -0.02em;
+}
+
+.hero-subhead {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  max-width: 620px;
+  margin: 0 auto 2rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* --- Sections --- */
+
+.section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.section h2 {
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+.section-lede {
+  text-align: center;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin: 0 auto 2rem;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+  margin-top: 2rem;
+}
+
+.feature-card {
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+}
+
+.feature-card h3 {
+  font-size: 1.05rem;
+}
+
+.feature-card p {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.vertical-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+}
+
+.vertical-grid li {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 2rem auto 0;
+  max-width: 700px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.steps li {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.step-index {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  border: 1px solid var(--accent-border);
+}
+
+.steps h3 {
+  font-size: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.steps p {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  margin: 0;
+}
+
+.cta-band {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+}
+
+.cta-band p {
+  color: var(--text-secondary);
+}
+
+/* --- Footer --- */
+
+.site-footer {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.site-footer a {
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .nav-links {
+    display: none;
+  }
+}

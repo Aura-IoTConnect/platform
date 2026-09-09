@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aura IoT Platform — One engine, every vertical</title>
+    <meta
+      name="description"
+      content="A config-driven IoT/SCADA/AI-agent platform. Telemetry, rules, alerts, and AI agents work the same way across cold storage, mining, smart city, and a dozen other industries — because it's one schema, not fourteen codebases."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="#top">
+          <span class="brand-mark" aria-hidden="true"></span>
+          Aura IoT Platform
+        </a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#verticals">Verticals</a>
+          <a href="#how-it-works">How it works</a>
+        </div>
+        <a class="button button-ghost" href="#" data-dashboard-link>Sign in</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="top" class="hero">
+        <h1>One engine. Every vertical.</h1>
+        <p class="hero-subhead">
+          Cold storage, mining, smart city, water treatment — they aren't separate products here. One generic
+          telemetry → rules → alerts → AI-agent pipeline, configured per industry with seed data instead of new
+          code.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#" data-dashboard-link>Open the dashboard</a>
+          <a class="button button-ghost" href="#how-it-works">See how it works</a>
+        </div>
+      </section>
+
+      <section id="features" class="section">
+        <h2>Built for real fleets, not a demo</h2>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3>Config-driven, not hard-coded</h3>
+            <p>
+              A <code>DeviceType</code> carries its own metric taxonomy — key, unit, safe range. Add an industry by
+              adding seed data, not by shipping new code.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>Real-time rules &amp; alerts</h3>
+            <p>
+              Threshold rules evaluate on every reading. A breach opens an alert and can dispatch an actuator
+              command automatically — the same control loop, whatever the metric.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>AI agents with a feedback loop</h3>
+            <p>
+              Critical alerts get an automatic root-cause explanation. Every agent run can be scored, so quality is
+              tracked over time instead of trusted blindly.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>Gateways, tags &amp; sites</h3>
+            <p>
+              Model a real hub-and-sensor topology, group devices with free-form tags, and organize a fleet into a
+              site hierarchy — or bulk-onboard a whole batch from a CSV.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>A real liveness signal</h3>
+            <p>
+              A heartbeat distinct from telemetry means you know a device is actually reachable, not just that its
+              status field hasn't been touched.
+            </p>
+          </article>
+          <article class="feature-card">
+            <h3>MQTT or HTTP, your choice</h3>
+            <p>
+              Per-device credentials over either transport, with self-service provisioning so a device can create
+              its own record instead of waiting on an operator.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="verticals" class="section">
+        <h2>Fourteen industries, one schema</h2>
+        <p class="section-lede">Every vertical below runs on the exact same pipeline — only the seed data differs.</p>
+        <ul class="vertical-grid">
+          <li>Cold Storage</li>
+          <li>Mining</li>
+          <li>Smart City</li>
+          <li>Water Treatment</li>
+          <li>Manufacturing</li>
+          <li>Agri-Processing</li>
+          <li>Weather Monitoring</li>
+          <li>Smart Home / Office</li>
+          <li>Warehousing &amp; Logistics</li>
+          <li>e-Health</li>
+          <li>Smart Metering</li>
+          <li>Security &amp; Surveillance</li>
+          <li>Transportation &amp; Fleet</li>
+          <li>Energy &amp; Solar</li>
+        </ul>
+      </section>
+
+      <section id="how-it-works" class="section">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-index">1</span>
+            <div>
+              <h3>Connect</h3>
+              <p>Devices report over MQTT or HTTP with a per-device key — or provision themselves.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-index">2</span>
+            <div>
+              <h3>Configure</h3>
+              <p>Set thresholds per device type once. Every device of that type is covered.</p>
+            </div>
+          </li>
+          <li>
+            <span class="step-index">3</span>
+            <div>
+              <h3>Monitor &amp; automate</h3>
+              <p>Watch live dashboards, get AI-explained alerts, and dispatch actuator commands — manually or by rule.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="cta-band">
+        <h2>See your fleet in one place</h2>
+        <p>No sales call required — the dashboard is right there.</p>
+        <a class="button button-primary" href="#" data-dashboard-link>Open the dashboard</a>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>Aura IoT Platform</span>
+      <a href="mailto:hello@example.com">hello@example.com</a>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
