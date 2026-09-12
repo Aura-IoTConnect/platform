@@ -13,6 +13,13 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:api"],
       "port": 4000
+    },
+    {
+      "name": "marketing",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:marketing"],
+      "port": 5175,
+      "autoPort": true
     }
   ]
 }
