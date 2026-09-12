@@ -132,7 +132,60 @@ model Device {
   commissionedAt    DateTime? @map("commissioned_at")
   warrantyExpiresAt DateTime? @map("warranty_expires_at")
 
+  // Gateway/child hierarchy — one level only (a device with childDevices
+  // cannot itself have a parentDeviceId, and a device cannot be attached to
+  // a device that already has a parent), enforced in apps/api's PATCH
+  // handler, not by the schema. onDelete: SetNull so a deleted gateway
+  // orphans its children rather than cascade-deleting them. See CLAUDE.md's
+  // "Gateway/child device hierarchy" section.
+  parentDeviceId String?  @map("parent_device_id")
+  parentDevice   Device?  @relation("DeviceHierarchy", fields: [parentDeviceId], references: [id], onDelete: SetNull)
+  childDevices   Device[] @relation("DeviceHierarchy")
+
+  // Grouping (see CLAUDE.md's "Grouping, tags & bulk import/export"
+  // section): tags is free-form and unmoderated (Postgres text array, no
+  // separate Tag table — same "no plugin loader" preference for simple
+  // built-ins over premature normalization used elsewhere in this schema).
+  // site is a separate, structured hierarchy an operator manages
+  // explicitly (Site below); optional and independent of `location`
+  // (still a free-text label, unchanged) and of tags.
+  tags   String[] @default([])
+  siteId String?  @map("site_id")
+  site   Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  // Liveness — a real heartbeat, distinct from `status` (operator/rule-set,
+  // never auto-updated) and from TelemetryReading (per-metric, only exists
+  // for metrics a device actually reports). apps/workers stamps this on
+  // every successful device-authenticated contact: telemetry ingestion
+  // (HTTP or MQTT) or a standalone POST /ingestion/heartbeat for devices
+  // with nothing to report right now. apps/api never writes it — read-only
+  // from this side. See CLAUDE.md's "Liveness signal & Devices tab search"
+  // section.
+  lastSeenAt DateTime? @map("last_seen_at")
+
+  @@index([parentDeviceId])
+  @@index([siteId])
   @@map("devices")
+}
+
+/// A physical/logical location grouping, e.g. "Region > Facility > Room" —
+/// distinct from Device.location (a free-text label with no structure) and
+/// from the gateway/child Device hierarchy above (that's about which
+/// devices report through which, not where they physically are). One level
+/// of nesting is not enforced here — sites can nest arbitrarily deep, since
+/// physical site hierarchies are ordinary trees, not constrained the way
+/// the one-level gateway hierarchy is.
+model Site {
+  id           String   @id @default(cuid())
+  name         String
+  parentSiteId String?  @map("parent_site_id")
+  parentSite   Site?    @relation("SiteHierarchy", fields: [parentSiteId], references: [id], onDelete: SetNull)
+  childSites   Site[]   @relation("SiteHierarchy")
+  devices      Device[]
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([parentSiteId])
+  @@map("sites")
 }
 
 /// A free-text maintenance/service history entry for a Device — the
