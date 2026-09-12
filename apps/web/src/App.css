@@ -523,6 +523,39 @@
   border-color: var(--danger-border);
 }
 
+.liveness-pill {
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.liveness-live {
+  color: var(--success);
+  border-color: var(--success-border);
+}
+
+.liveness-stale {
+  color: var(--warning);
+  border-color: var(--warning-border);
+}
+
+.liveness-unknown {
+  color: var(--text-secondary);
+}
+
+.record-actions-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.devices-toolbar {
+  flex-wrap: wrap;
+}
+
 .severity-dot {
   display: inline-block;
   width: 8px;

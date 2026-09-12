@@ -588,6 +588,42 @@ alongside the one-at-a-time create form and self-service provisioning.
   `sites` table but never reads or writes any of it — pure
   apps/api/dashboard concerns, per the schema-ownership rule.
 
+### Liveness signal & Devices tab search
+
+`Device.status` (ONLINE/OFFLINE/MAINTENANCE) is operator-set and never
+auto-updated by anything in this codebase — it carries no real information
+about whether a device is actually reachable. `Device.lastSeenAt` is a
+genuine heartbeat, distinct from both `status` and from `TelemetryReading`
+(per-metric, and only exists for metrics a device actually reports):
+
+- **`apps/workers` owns writing it** (`apps/api` only ever reads it back —
+  `lastSeenAt` isn't in `devices.ts`'s `updateDeviceSchema`, so a `PATCH`
+  attempt to set it directly is silently dropped, not an error).
+  `telemetry_service.py::ingest_reading` stamps it on *any* authenticated
+  contact from a known device, even a reading the metric policy goes on to
+  reject — the device did talk to us, which is what liveness is about, not
+  reading validity. `POST /ingestion/heartbeat` (`app/ingestion.py`, same
+  `check_device_auth` as `/ingestion/telemetry`) stamps it with no
+  telemetry write at all, for a device with nothing to report right now
+  that still wants to prove it's reachable.
+- **Display-only threshold** (`apps/web/src/liveness.ts`): a device counts
+  as "Live" if `lastSeenAt` is within the last 10 minutes, "Stale" if
+  older, "Never reported" if null. This is *not* the `SILENT_FOR` rule type
+  (`silence_monitor.py`) — that creates real `Alert` rows, is per-metric,
+  and is scoped to a `DeviceType`'s configured rule; this is a fleet-wide,
+  always-on badge with no configuration and no alerting side effect. The
+  two overlap in spirit but serve different needs (a glance at the fleet
+  vs. an actionable alert) and aren't reconciled into one mechanism.
+  Rendered as a pill next to the status pill in `DevicesTab.tsx`'s list and
+  next to the device name in `DeviceDetail.tsx`'s header.
+- **Devices tab search/filter/sort** (`DevicesTab.tsx`): client-side over
+  the already-fetched device list (small fleets, no pagination anywhere
+  else in this dashboard either) — a free-text search across name,
+  location, device type, vertical, site, and tags; a status filter; and a
+  sort (newest first / name / status / last seen, most-recent-first with
+  never-reported devices sorted last).
+- `apps/workers/app/db.py` mirrors the new `last_seen_at` column.
+
 ## Commands
 
 ```bash

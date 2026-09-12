@@ -71,6 +71,7 @@ devices = Table(
     Column("parent_device_id", String, ForeignKey("devices.id")),
     Column("tags", ARRAY(String)),
     Column("site_id", String, ForeignKey("sites.id")),
+    Column("last_seen_at", DateTime(timezone=True)),
 )
 
 # Mirrored for completeness (schema-ownership rule); apps/workers never
