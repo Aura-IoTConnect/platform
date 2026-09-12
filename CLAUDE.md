@@ -472,6 +472,161 @@ index without the column \"timestamp\""). Nothing reads/writes by
 `TelemetryReading.id` alone anywhere in the codebase, so this is a
 schema-only widening, not a behavior change.
 
+### Device lifecycle & service log
+
+Device creation stays minimal (name + type + location); a second layer of
+optional, independently-settable fields covers what an operator learns
+*after* a device is deployed:
+
+- **Lifecycle metadata** — `Device.firmwareVersion`, `hardwareModel`,
+  `manufacturer`, `commissionedAt`, `warrantyExpiresAt`, all set via
+  `PATCH /api/devices/:id` (a partial update — send only the fields
+  changing). Shown/edited in `DeviceDetail.tsx`'s "Device info" panel
+  (`device-panels/DeviceInfoPanel.tsx`), which keeps its own local copy of
+  the device rather than lifting state to the parent list — a minor,
+  accepted staleness tradeoff (the same one `rotate-key`'s one-time-reveal
+  banner already has) rather than plumbing a setter through `DevicesTab.tsx`.
+- **`ServiceLogEntry`** — a free-text, timestamped maintenance history per
+  device (`GET`/`POST /api/devices/:id/service-log`), stamped with the
+  calling JWT user's email (`createdBy`, a plain string — this doesn't
+  depend on the audit-fields work on a sibling branch, same reasoning as
+  the device-silence alarm's standalone dedup). Shown in
+  `device-panels/ServiceLogPanel.tsx`.
+
+`apps/workers/app/db.py` mirrors both (new `devices` columns +
+`service_log_entries` table) but never reads or writes either — pure
+apps/api/dashboard concerns, per the schema-ownership rule.
+
+### Gateway/child device hierarchy
+
+`Device.parentDeviceId` (self-relation, `Device.childDevices`) lets one
+`Device` row represent a gateway/hub with attached sub-devices — the real
+multi-sensor pattern most industrial gateways use (an IoT controller with
+several wired sensors behind it, one MQTT/HTTP identity for provisioning
+purposes, but each sensor still wants its own telemetry/rules/alerts).
+
+- **One level only, enforced in `apps/api`, not the schema** — Postgres has
+  no clean "self-referential depth ≤ 1" constraint, so `PATCH
+  /api/devices/:id`'s `validateParentAssignment` (`src/routes/devices.ts`)
+  checks it explicitly: a device can't be its own parent, the target
+  `parentDeviceId` must itself have no parent (no chains), and a device that
+  already has children can't become a child (no children-of-children). All
+  three fail as a plain `400`, not a 500 — a device management UI action
+  that's just invalid, not a server error.
+- **`onDelete: SetNull`** on the self-relation — deleting a gateway orphans
+  its children (sets their `parentDeviceId` back to null) rather than
+  cascade-deleting them; a child device's own `Device` row, telemetry, and
+  alert history are independent of its gateway assignment.
+- `GET /api/devices` and `GET /api/devices/:id` both include `childDevices`
+  as a summary (`id`/`name`/`status` only, via `childDeviceSummary` — not a
+  full nested `Device`, which would re-leak `apiKeyHash`/
+  `provisionSecretHash` through the same nesting bug this session already
+  fixed once for `deviceType`). `PATCH` accepts/returns `parentDeviceId`
+  directly.
+- **`device-panels/GatewayPanel.tsx`** — same self-contained-panel
+  convention as `DeviceInfoPanel`/`ServiceLogPanel`, but needs the *other*
+  devices to populate its "attach to gateway" / "add child" dropdowns, so
+  `DevicesTab.tsx` passes its already-fetched `devices` list down through
+  `DeviceDetail` as `allDevices`, plus an `onChanged` callback (`load`) the
+  panel calls after every PATCH instead of keeping its own patched-up local
+  copy — simpler than reconciling a locally-optimistic `childDevices` array
+  against a list of full `Device` objects that also needs to reflect the
+  change. The panel filters candidates to what the server would actually
+  accept (no parent already / no children already) so the dropdowns don't
+  offer choices that would just 400.
+- `apps/workers/app/db.py` mirrors the new `parent_device_id` column but
+  never reads or writes it — same as every other lifecycle field.
+
+### Grouping, tags & bulk import/export
+
+Two independent axes of grouping, plus a bulk onboarding/reporting path —
+alongside the one-at-a-time create form and self-service provisioning.
+
+- **Tags** — `Device.tags` is a free-form, unmoderated Postgres text array
+  (no separate `Tag` table — same preference for a simple built-in over
+  premature normalization used elsewhere in this schema). Set via
+  `PATCH /api/devices/:id`'s `tags` field, which **replaces** the whole
+  array (like GitHub topics), not a merge. `GET /api/devices?tag=` filters
+  to devices carrying a given tag (Prisma's `has` on the array column).
+- **`Site`** — a separate, structured location hierarchy (self-relation,
+  arbitrary nesting depth — unlike the one-level-only gateway hierarchy),
+  distinct from `Device.location` (still a free-text label, unchanged) and
+  from the gateway/child `Device` hierarchy (that's about which devices
+  report through which, not where they physically are). `src/routes/sites.ts`
+  is a small standalone CRUD router (`/api/sites`): create/list/patch/delete,
+  with a `wouldCreateCycle` walk-the-ancestors check on `PATCH` (a site tree
+  can be deep, so unlike the gateway hierarchy this needs a real cycle
+  check, not just "one level"). **Delete refuses** if the site still has
+  devices or child sites attached (`400`) rather than silently orphaning
+  them via the schema's `onDelete: SetNull` — a grouping disappearing out
+  from under devices without the operator noticing would be surprising.
+  `Device.siteId` is set via the same `PATCH /api/devices/:id` as tags.
+- **CSV bulk import/export** (`GET /api/devices/export`,
+  `POST /api/devices/import`, `src/csv.ts` for a small hand-rolled
+  RFC-4180-ish encode/decode — one caller pair, so simpler than a
+  dependency). Export columns are keyed by name (`name`, `verticalKey`,
+  `deviceTypeKey`, `location`, `tags` (`;`-joined), `site`, `status`, the
+  lifecycle fields), so a reordered/spreadsheet-edited file still imports
+  correctly. Import requires `name`/`verticalKey`/`deviceTypeKey` per row
+  (a `DeviceType.key` is only unique per vertical — `@@unique([verticalId,
+  key])` — so both are needed to resolve one unambiguously) and matches
+  `site` **by name against an existing `Site` only** — it never creates
+  one, so a typo in the CSV fails that row instead of silently spawning a
+  duplicate site. Always `200` with per-row `results` (same "partial
+  failure isn't full failure" convention as `POST
+  /api/device-types/:id/actuator`) — one bad row must not sink the batch.
+  Each created row goes through the same `apiKey` generation +
+  best-effort MQTT provisioning as `POST /api/devices`.
+- **Frontend**: `device-panels/GroupingPanel.tsx` (tags + site, inside
+  `DeviceDetail.tsx`) and `SitesManager.tsx` (a collapsible CRUD panel in
+  `DevicesTab.tsx`'s toolbar) both self-fetch `/api/sites` independently —
+  same self-contained-panel convention as the other device panels, with the
+  same accepted staleness tradeoff (a site added in one won't appear in the
+  other's dropdown until it remounts). CSV export triggers a client-side
+  download (`Blob` + `URL.createObjectURL` + a synthetic `<a>` click, since
+  the dashboard is a real authenticated app, not a sandboxed context);
+  import reads the chosen file client-side (`File.text()`) and posts its
+  contents as `{csv}` JSON, then shows a dismissible summary of failed rows.
+- `apps/workers/app/db.py` mirrors `Device.tags`/`siteId` and the new
+  `sites` table but never reads or writes any of it — pure
+  apps/api/dashboard concerns, per the schema-ownership rule.
+
+### Liveness signal & Devices tab search
+
+`Device.status` (ONLINE/OFFLINE/MAINTENANCE) is operator-set and never
+auto-updated by anything in this codebase — it carries no real information
+about whether a device is actually reachable. `Device.lastSeenAt` is a
+genuine heartbeat, distinct from both `status` and from `TelemetryReading`
+(per-metric, and only exists for metrics a device actually reports):
+
+- **`apps/workers` owns writing it** (`apps/api` only ever reads it back —
+  `lastSeenAt` isn't in `devices.ts`'s `updateDeviceSchema`, so a `PATCH`
+  attempt to set it directly is silently dropped, not an error).
+  `telemetry_service.py::ingest_reading` stamps it on *any* authenticated
+  contact from a known device, even a reading the metric policy goes on to
+  reject — the device did talk to us, which is what liveness is about, not
+  reading validity. `POST /ingestion/heartbeat` (`app/ingestion.py`, same
+  `check_device_auth` as `/ingestion/telemetry`) stamps it with no
+  telemetry write at all, for a device with nothing to report right now
+  that still wants to prove it's reachable.
+- **Display-only threshold** (`apps/web/src/liveness.ts`): a device counts
+  as "Live" if `lastSeenAt` is within the last 10 minutes, "Stale" if
+  older, "Never reported" if null. This is *not* the `SILENT_FOR` rule type
+  (`silence_monitor.py`) — that creates real `Alert` rows, is per-metric,
+  and is scoped to a `DeviceType`'s configured rule; this is a fleet-wide,
+  always-on badge with no configuration and no alerting side effect. The
+  two overlap in spirit but serve different needs (a glance at the fleet
+  vs. an actionable alert) and aren't reconciled into one mechanism.
+  Rendered as a pill next to the status pill in `DevicesTab.tsx`'s list and
+  next to the device name in `DeviceDetail.tsx`'s header.
+- **Devices tab search/filter/sort** (`DevicesTab.tsx`): client-side over
+  the already-fetched device list (small fleets, no pagination anywhere
+  else in this dashboard either) — a free-text search across name,
+  location, device type, vertical, site, and tags; a status filter; and a
+  sort (newest first / name / status / last seen, most-recent-first with
+  never-reported devices sorted last).
+- `apps/workers/app/db.py` mirrors the new `last_seen_at` column.
+
 ### Marketing landing page
 
 `apps/marketing/` is a public-facing landing page — deliberately **not**
