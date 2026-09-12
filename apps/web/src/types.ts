@@ -74,6 +74,29 @@ export interface Device {
   // Device objects. See CLAUDE.md's "Gateway/child device hierarchy" section.
   parentDeviceId: string | null
   childDevices: { id: string; name: string; status: 'ONLINE' | 'OFFLINE' | 'MAINTENANCE' }[]
+  // Grouping — free-form tags plus an optional Site (a separate, structured
+  // location hierarchy from `location` above). See CLAUDE.md's "Grouping,
+  // tags & bulk import/export" section.
+  tags: string[]
+  siteId: string | null
+  site: Site | null
+  // Liveness — see CLAUDE.md's "Liveness signal & Devices tab search"
+  // section. Read-only from the dashboard: only apps/workers stamps it,
+  // on telemetry ingestion or POST /ingestion/heartbeat.
+  lastSeenAt: string | null
+}
+
+export interface Site {
+  id: string
+  name: string
+  parentSiteId: string | null
+  createdAt: string
+}
+
+export interface DeviceImportResult {
+  created: number
+  failed: number
+  results: { row: number; ok: boolean; deviceId?: string; error?: string }[]
 }
 
 export interface ServiceLogEntry {

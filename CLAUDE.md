@@ -534,6 +534,96 @@ purposes, but each sensor still wants its own telemetry/rules/alerts).
 - `apps/workers/app/db.py` mirrors the new `parent_device_id` column but
   never reads or writes it — same as every other lifecycle field.
 
+### Grouping, tags & bulk import/export
+
+Two independent axes of grouping, plus a bulk onboarding/reporting path —
+alongside the one-at-a-time create form and self-service provisioning.
+
+- **Tags** — `Device.tags` is a free-form, unmoderated Postgres text array
+  (no separate `Tag` table — same preference for a simple built-in over
+  premature normalization used elsewhere in this schema). Set via
+  `PATCH /api/devices/:id`'s `tags` field, which **replaces** the whole
+  array (like GitHub topics), not a merge. `GET /api/devices?tag=` filters
+  to devices carrying a given tag (Prisma's `has` on the array column).
+- **`Site`** — a separate, structured location hierarchy (self-relation,
+  arbitrary nesting depth — unlike the one-level-only gateway hierarchy),
+  distinct from `Device.location` (still a free-text label, unchanged) and
+  from the gateway/child `Device` hierarchy (that's about which devices
+  report through which, not where they physically are). `src/routes/sites.ts`
+  is a small standalone CRUD router (`/api/sites`): create/list/patch/delete,
+  with a `wouldCreateCycle` walk-the-ancestors check on `PATCH` (a site tree
+  can be deep, so unlike the gateway hierarchy this needs a real cycle
+  check, not just "one level"). **Delete refuses** if the site still has
+  devices or child sites attached (`400`) rather than silently orphaning
+  them via the schema's `onDelete: SetNull` — a grouping disappearing out
+  from under devices without the operator noticing would be surprising.
+  `Device.siteId` is set via the same `PATCH /api/devices/:id` as tags.
+- **CSV bulk import/export** (`GET /api/devices/export`,
+  `POST /api/devices/import`, `src/csv.ts` for a small hand-rolled
+  RFC-4180-ish encode/decode — one caller pair, so simpler than a
+  dependency). Export columns are keyed by name (`name`, `verticalKey`,
+  `deviceTypeKey`, `location`, `tags` (`;`-joined), `site`, `status`, the
+  lifecycle fields), so a reordered/spreadsheet-edited file still imports
+  correctly. Import requires `name`/`verticalKey`/`deviceTypeKey` per row
+  (a `DeviceType.key` is only unique per vertical — `@@unique([verticalId,
+  key])` — so both are needed to resolve one unambiguously) and matches
+  `site` **by name against an existing `Site` only** — it never creates
+  one, so a typo in the CSV fails that row instead of silently spawning a
+  duplicate site. Always `200` with per-row `results` (same "partial
+  failure isn't full failure" convention as `POST
+  /api/device-types/:id/actuator`) — one bad row must not sink the batch.
+  Each created row goes through the same `apiKey` generation +
+  best-effort MQTT provisioning as `POST /api/devices`.
+- **Frontend**: `device-panels/GroupingPanel.tsx` (tags + site, inside
+  `DeviceDetail.tsx`) and `SitesManager.tsx` (a collapsible CRUD panel in
+  `DevicesTab.tsx`'s toolbar) both self-fetch `/api/sites` independently —
+  same self-contained-panel convention as the other device panels, with the
+  same accepted staleness tradeoff (a site added in one won't appear in the
+  other's dropdown until it remounts). CSV export triggers a client-side
+  download (`Blob` + `URL.createObjectURL` + a synthetic `<a>` click, since
+  the dashboard is a real authenticated app, not a sandboxed context);
+  import reads the chosen file client-side (`File.text()`) and posts its
+  contents as `{csv}` JSON, then shows a dismissible summary of failed rows.
+- `apps/workers/app/db.py` mirrors `Device.tags`/`siteId` and the new
+  `sites` table but never reads or writes any of it — pure
+  apps/api/dashboard concerns, per the schema-ownership rule.
+
+### Liveness signal & Devices tab search
+
+`Device.status` (ONLINE/OFFLINE/MAINTENANCE) is operator-set and never
+auto-updated by anything in this codebase — it carries no real information
+about whether a device is actually reachable. `Device.lastSeenAt` is a
+genuine heartbeat, distinct from both `status` and from `TelemetryReading`
+(per-metric, and only exists for metrics a device actually reports):
+
+- **`apps/workers` owns writing it** (`apps/api` only ever reads it back —
+  `lastSeenAt` isn't in `devices.ts`'s `updateDeviceSchema`, so a `PATCH`
+  attempt to set it directly is silently dropped, not an error).
+  `telemetry_service.py::ingest_reading` stamps it on *any* authenticated
+  contact from a known device, even a reading the metric policy goes on to
+  reject — the device did talk to us, which is what liveness is about, not
+  reading validity. `POST /ingestion/heartbeat` (`app/ingestion.py`, same
+  `check_device_auth` as `/ingestion/telemetry`) stamps it with no
+  telemetry write at all, for a device with nothing to report right now
+  that still wants to prove it's reachable.
+- **Display-only threshold** (`apps/web/src/liveness.ts`): a device counts
+  as "Live" if `lastSeenAt` is within the last 10 minutes, "Stale" if
+  older, "Never reported" if null. This is *not* the `SILENT_FOR` rule type
+  (`silence_monitor.py`) — that creates real `Alert` rows, is per-metric,
+  and is scoped to a `DeviceType`'s configured rule; this is a fleet-wide,
+  always-on badge with no configuration and no alerting side effect. The
+  two overlap in spirit but serve different needs (a glance at the fleet
+  vs. an actionable alert) and aren't reconciled into one mechanism.
+  Rendered as a pill next to the status pill in `DevicesTab.tsx`'s list and
+  next to the device name in `DeviceDetail.tsx`'s header.
+- **Devices tab search/filter/sort** (`DevicesTab.tsx`): client-side over
+  the already-fetched device list (small fleets, no pagination anywhere
+  else in this dashboard either) — a free-text search across name,
+  location, device type, vertical, site, and tags; a status filter; and a
+  sort (newest first / name / status / last seen, most-recent-first with
+  never-reported devices sorted last).
+- `apps/workers/app/db.py` mirrors the new `last_seen_at` column.
+
 ## Commands
 
 ```bash

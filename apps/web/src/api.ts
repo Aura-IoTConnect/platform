@@ -23,6 +23,15 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json()
 }
 
+// For endpoints that return something other than JSON (device CSV export) —
+// same bearer-auth handling as apiGet, but returns the raw response body.
+export async function apiGetText(path: string): Promise<string> {
+  const res = await fetch(`${API_URL}${path}`, { headers: authHeaders() })
+  handleResponse(res)
+  if (!res.ok) throw new Error(`GET ${path} failed`)
+  return res.text()
+}
+
 export async function apiSend<T>(path: string, method: 'POST' | 'PATCH', body: unknown): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method,

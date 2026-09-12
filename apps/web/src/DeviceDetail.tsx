@@ -3,7 +3,9 @@ import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
 import { DeviceInfoPanel } from './device-panels/DeviceInfoPanel'
 import { GatewayPanel } from './device-panels/GatewayPanel'
+import { GroupingPanel } from './device-panels/GroupingPanel'
 import { ServiceLogPanel } from './device-panels/ServiceLogPanel'
+import { livenessBadgeText, livenessLabel, livenessState } from './liveness'
 import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
@@ -173,7 +175,15 @@ export function DeviceDetail({
   return (
     <div className="device-detail">
       <div className="device-detail-header">
-        <h3>{device.name}</h3>
+        <h3>
+          {device.name}{' '}
+          <span
+            className={`liveness-pill liveness-${livenessState(device.lastSeenAt)}`}
+            title={livenessLabel(device.lastSeenAt)}
+          >
+            {livenessBadgeText(device.lastSeenAt)}
+          </span>
+        </h3>
         <div className="record-actions">
           <button type="button" onClick={rotateKey} disabled={rotating}>
             {rotating ? 'Rotating…' : 'Rotate API key'}
@@ -190,6 +200,8 @@ export function DeviceDetail({
       {agentNotice && <p className="hint">{agentNotice}</p>}
 
       <DeviceInfoPanel device={device} />
+
+      <GroupingPanel device={device} />
 
       <GatewayPanel device={device} allDevices={allDevices} onChanged={onChanged} />
 
