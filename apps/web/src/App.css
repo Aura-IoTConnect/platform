@@ -247,6 +247,87 @@
   font-size: 0.85rem;
 }
 
+.device-info-panel,
+.service-log-panel,
+.gateway-panel,
+.grouping-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag-chip {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.sites-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sites-manager-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.device-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.device-info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.device-info-grid dt {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.device-info-grid dd {
+  margin: 0;
+}
+
+.device-info-form {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.device-info-date-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  width: 100%;
+}
+
+.device-info-date-label input {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+
 .rules-panel {
   display: flex;
   flex-direction: column;
@@ -440,6 +521,39 @@
 .status-open {
   color: var(--danger);
   border-color: var(--danger-border);
+}
+
+.liveness-pill {
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.liveness-live {
+  color: var(--success);
+  border-color: var(--success-border);
+}
+
+.liveness-stale {
+  color: var(--warning);
+  border-color: var(--warning-border);
+}
+
+.liveness-unknown {
+  color: var(--text-secondary);
+}
+
+.record-actions-column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.devices-toolbar {
+  flex-wrap: wrap;
 }
 
 .severity-dot {

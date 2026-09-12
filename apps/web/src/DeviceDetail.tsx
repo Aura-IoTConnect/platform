@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { apiGet, apiSend, apiSendAgent, ApiRequestError } from './api'
 import { LineChart } from './LineChart'
+import { DeviceInfoPanel } from './device-panels/DeviceInfoPanel'
+import { GatewayPanel } from './device-panels/GatewayPanel'
+import { GroupingPanel } from './device-panels/GroupingPanel'
+import { ServiceLogPanel } from './device-panels/ServiceLogPanel'
+import { livenessBadgeText, livenessLabel, livenessState } from './liveness'
 import type { BacktestResult, BulkActuatorResult, Device, Rule } from './types'
 import { WidgetRenderer } from './widgets/WidgetRenderer'
 
@@ -28,7 +33,17 @@ function agentErrorMessage(err: unknown): string {
   return 'Agent request failed — is apps/workers running?'
 }
 
-export function DeviceDetail({ device, onClose }: { device: Device; onClose: () => void }) {
+export function DeviceDetail({
+  device,
+  allDevices,
+  onClose,
+  onChanged,
+}: {
+  device: Device
+  allDevices: Device[]
+  onClose: () => void
+  onChanged: () => void
+}) {
   const [readings, setReadings] = useState<Reading[]>([])
   const [loading, setLoading] = useState(true)
   const [suggesting, setSuggesting] = useState(false)
@@ -160,7 +175,15 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
   return (
     <div className="device-detail">
       <div className="device-detail-header">
-        <h3>{device.name}</h3>
+        <h3>
+          {device.name}{' '}
+          <span
+            className={`liveness-pill liveness-${livenessState(device.lastSeenAt)}`}
+            title={livenessLabel(device.lastSeenAt)}
+          >
+            {livenessBadgeText(device.lastSeenAt)}
+          </span>
+        </h3>
         <div className="record-actions">
           <button type="button" onClick={rotateKey} disabled={rotating}>
             {rotating ? 'Rotating…' : 'Rotate API key'}
@@ -176,6 +199,12 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
 
       {agentNotice && <p className="hint">{agentNotice}</p>}
 
+      <DeviceInfoPanel device={device} />
+
+      <GroupingPanel device={device} />
+
+      <GatewayPanel device={device} allDevices={allDevices} onChanged={onChanged} />
+
       {newApiKey && (
         <div className="api-key-banner">
           <p>New API key — save it now, it won't be shown again (the old key stops working immediately):</p>
@@ -185,6 +214,8 @@ export function DeviceDetail({ device, onClose }: { device: Device; onClose: () 
           </button>
         </div>
       )}
+
+      <ServiceLogPanel deviceId={device.id} />
 
       {rules.length > 0 && (
         <div className="rules-panel">

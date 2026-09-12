@@ -48,6 +48,13 @@ async def ingest_reading(
             ingestion_readings_total.labels(transport=transport, outcome="unknown_device").inc()
             return {"status": "unknown_device", "alertsCreated": 0}
 
+        # Liveness: any authenticated contact from a known device counts,
+        # even a reading the metric policy goes on to reject below — the
+        # device did talk to us. See CLAUDE.md's "Liveness signal & Devices
+        # tab search" section; also stamped by POST /ingestion/heartbeat for
+        # devices with nothing to report right now.
+        await conn.execute(devices.update().where(devices.c.id == device_id).values(last_seen_at=ts))
+
         # Pre-process (see app/metric_pipeline.py). A rejected reading is
         # neither persisted nor rule-evaluated — it never existed as far as
         # the control loop is concerned.
@@ -81,3 +88,16 @@ async def ingest_reading(
             await maybe_trigger_anomaly_explainer(alert["id"])
 
     return {"status": "accepted", "alertsCreated": len(created_alerts)}
+
+
+async def record_heartbeat(device_id: str) -> bool:
+    """Stamps last_seen_at with no telemetry write — for a device that has
+    nothing to report right now but wants to prove it's still there. Returns
+    False for an unknown device_id rather than raising, same "clean
+    unknown_device outcome" shape as ingest_reading above."""
+    engine = get_engine()
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            devices.update().where(devices.c.id == device_id).values(last_seen_at=datetime.now(timezone.utc))
+        )
+    return result.rowcount > 0

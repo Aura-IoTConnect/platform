@@ -22,11 +22,11 @@ enum UserRole {
 /// authenticate to apps/workers separately (see WORKERS_API_TOKEN in
 /// apps/workers, not a User row).
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(OPERATOR)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id           String          @id @default(cuid())
+  email        String          @unique
+  passwordHash String          @map("password_hash")
+  role         UserRole        @default(OPERATOR)
+  createdAt    DateTime        @default(now()) @map("created_at")
   watchlist    WatchlistItem[]
 
   @@map("users")
@@ -104,25 +104,105 @@ enum DeviceStatus {
 /// evaluation all key off deviceType, so onboarding a new device is just
 /// picking an existing DeviceType (or defining a new one).
 model Device {
-  id               String             @id @default(cuid())
-  deviceTypeId     String             @map("device_type_id")
-  deviceType       DeviceType         @relation(fields: [deviceTypeId], references: [id])
-  name             String
-  location         String?
-  status           DeviceStatus       @default(ONLINE)
-  metadata         Json?
+  id                String             @id @default(cuid())
+  deviceTypeId      String             @map("device_type_id")
+  deviceType        DeviceType         @relation(fields: [deviceTypeId], references: [id])
+  name              String
+  location          String?
+  status            DeviceStatus       @default(ONLINE)
+  metadata          Json?
   /// SHA-256 hex digest of the device's ingestion API key. The raw key is
   /// generated and returned once (create + rotate endpoints), never stored.
   /// Null means this device has no per-device key — see CLAUDE.md for the
   /// ingestion auth fallback that applies in that case.
-  apiKeyHash       String?            @unique @map("api_key_hash")
-  telemetry        TelemetryReading[]
-  alerts           Alert[]
-  actuatorCommands ActuatorCommand[]
-  watchlistItems   WatchlistItem[]
-  createdAt        DateTime           @default(now()) @map("created_at")
+  apiKeyHash        String?            @unique @map("api_key_hash")
+  telemetry         TelemetryReading[]
+  alerts            Alert[]
+  actuatorCommands  ActuatorCommand[]
+  watchlistItems    WatchlistItem[]
+  serviceLogEntries ServiceLogEntry[]
+  createdAt         DateTime           @default(now()) @map("created_at")
 
+  // Lifecycle / serviceability metadata — all optional, set post-creation
+  // via PATCH /api/devices/:id (device creation stays minimal: name + type
+  // + location). See CLAUDE.md's "Device lifecycle & service log" section.
+  firmwareVersion   String?   @map("firmware_version")
+  hardwareModel     String?   @map("hardware_model")
+  manufacturer      String?
+  commissionedAt    DateTime? @map("commissioned_at")
+  warrantyExpiresAt DateTime? @map("warranty_expires_at")
+
+  // Gateway/child hierarchy — one level only (a device with childDevices
+  // cannot itself have a parentDeviceId, and a device cannot be attached to
+  // a device that already has a parent), enforced in apps/api's PATCH
+  // handler, not by the schema. onDelete: SetNull so a deleted gateway
+  // orphans its children rather than cascade-deleting them. See CLAUDE.md's
+  // "Gateway/child device hierarchy" section.
+  parentDeviceId String?  @map("parent_device_id")
+  parentDevice   Device?  @relation("DeviceHierarchy", fields: [parentDeviceId], references: [id], onDelete: SetNull)
+  childDevices   Device[] @relation("DeviceHierarchy")
+
+  // Grouping (see CLAUDE.md's "Grouping, tags & bulk import/export"
+  // section): tags is free-form and unmoderated (Postgres text array, no
+  // separate Tag table — same "no plugin loader" preference for simple
+  // built-ins over premature normalization used elsewhere in this schema).
+  // site is a separate, structured hierarchy an operator manages
+  // explicitly (Site below); optional and independent of `location`
+  // (still a free-text label, unchanged) and of tags.
+  tags   String[] @default([])
+  siteId String?  @map("site_id")
+  site   Site?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  // Liveness — a real heartbeat, distinct from `status` (operator/rule-set,
+  // never auto-updated) and from TelemetryReading (per-metric, only exists
+  // for metrics a device actually reports). apps/workers stamps this on
+  // every successful device-authenticated contact: telemetry ingestion
+  // (HTTP or MQTT) or a standalone POST /ingestion/heartbeat for devices
+  // with nothing to report right now. apps/api never writes it — read-only
+  // from this side. See CLAUDE.md's "Liveness signal & Devices tab search"
+  // section.
+  lastSeenAt DateTime? @map("last_seen_at")
+
+  @@index([parentDeviceId])
+  @@index([siteId])
   @@map("devices")
+}
+
+/// A physical/logical location grouping, e.g. "Region > Facility > Room" —
+/// distinct from Device.location (a free-text label with no structure) and
+/// from the gateway/child Device hierarchy above (that's about which
+/// devices report through which, not where they physically are). One level
+/// of nesting is not enforced here — sites can nest arbitrarily deep, since
+/// physical site hierarchies are ordinary trees, not constrained the way
+/// the one-level gateway hierarchy is.
+model Site {
+  id           String   @id @default(cuid())
+  name         String
+  parentSiteId String?  @map("parent_site_id")
+  parentSite   Site?    @relation("SiteHierarchy", fields: [parentSiteId], references: [id], onDelete: SetNull)
+  childSites   Site[]   @relation("SiteHierarchy")
+  devices      Device[]
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([parentSiteId])
+  @@map("sites")
+}
+
+/// A free-text maintenance/service history entry for a Device — the
+/// serviceability record a technician would otherwise keep on paper or in
+/// a spreadsheet. createdBy is the JWT user's email at write time (a plain
+/// string, not a User FK — this branch doesn't depend on the audit-fields
+/// work on a sibling branch).
+model ServiceLogEntry {
+  id        String   @id @default(cuid())
+  deviceId  String   @map("device_id")
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  note      String
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([deviceId, createdAt])
+  @@map("service_log_entries")
 }
 
 /// A single metric reading. Written by apps/workers as telemetry is ingested

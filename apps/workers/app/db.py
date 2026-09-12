@@ -24,7 +24,7 @@ from sqlalchemy import (
     String,
     Table,
 )
-from sqlalchemy.dialects.postgresql import ENUM, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, ENUM, JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 metadata = MetaData()
@@ -62,6 +62,38 @@ devices = Table(
     Column("status", device_status_enum),
     Column("metadata", JSONB),
     Column("api_key_hash", String),
+    Column("created_at", DateTime(timezone=True)),
+    Column("firmware_version", String),
+    Column("hardware_model", String),
+    Column("manufacturer", String),
+    Column("commissioned_at", DateTime(timezone=True)),
+    Column("warranty_expires_at", DateTime(timezone=True)),
+    Column("parent_device_id", String, ForeignKey("devices.id")),
+    Column("tags", ARRAY(String)),
+    Column("site_id", String, ForeignKey("sites.id")),
+    Column("last_seen_at", DateTime(timezone=True)),
+)
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes site rows today — grouping is a dashboard/apps/api concern.
+sites = Table(
+    "sites",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("name", String),
+    Column("parent_site_id", String, ForeignKey("sites.id")),
+    Column("created_at", DateTime(timezone=True)),
+)
+
+# Mirrored for completeness (schema-ownership rule); apps/workers never
+# reads or writes service log rows today — this is a dashboard/apps/api concern.
+service_log_entries = Table(
+    "service_log_entries",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("device_id", String, ForeignKey("devices.id")),
+    Column("note", String),
+    Column("created_by", String),
     Column("created_at", DateTime(timezone=True)),
 )
 

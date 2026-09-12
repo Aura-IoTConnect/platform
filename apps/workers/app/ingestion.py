@@ -5,7 +5,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from app.security import check_device_auth
-from app.telemetry_service import ingest_reading
+from app.telemetry_service import ingest_reading, record_heartbeat
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
@@ -16,6 +16,10 @@ class TelemetryReading(BaseModel):
     value: float
     unit: Optional[str] = None
     timestamp: Optional[datetime] = None
+
+
+class Heartbeat(BaseModel):
+    device_id: str
 
 
 @router.post("/telemetry")
@@ -32,3 +36,16 @@ async def ingest_telemetry(reading: TelemetryReading, authorization: Optional[st
         # this value — surface it to the sender rather than silently dropping.
         raise HTTPException(status_code=422, detail=f"reading rejected: {result['reason']}")
     return result
+
+
+# A liveness signal distinct from telemetry — for a device with nothing to
+# report right now that still wants to prove it's reachable. Same device
+# auth as /ingestion/telemetry. See CLAUDE.md's "Liveness signal & Devices
+# tab search" section.
+@router.post("/heartbeat")
+async def ingest_heartbeat(heartbeat: Heartbeat, authorization: Optional[str] = Header(default=None)) -> dict:
+    await check_device_auth(heartbeat.device_id, authorization)
+    seen = await record_heartbeat(heartbeat.device_id)
+    if not seen:
+        raise HTTPException(status_code=404, detail="Unknown device_id")
+    return {"status": "ok"}
