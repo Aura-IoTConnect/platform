@@ -1,0 +1,12 @@
+# Correctness-only lint for apps/workers: undefined names, unused
+# imports/variables, and the pycodestyle checks that catch real bugs (E4/E7/E9).
+# Deliberately NOT style rules.
+#
+# In particular, don't enable pyupgrade's UP045 (Optional[X] -> X | None):
+# pydantic evaluates annotations at runtime, and `X | None` is a SyntaxError
+# there on Python 3.9 — the version of the local dev venv — even with
+# `from __future__ import annotations`.
+target-version = "py39"
+
+[lint]
+select = ["E4", "E7", "E9", "F"]

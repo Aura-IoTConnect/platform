@@ -16,10 +16,7 @@ import logging
 import os
 import random
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
+import app.env  # noqa: F401 — side-effect import: loads .env before app.db reads os.environ
 import paho.mqtt.client as mqtt
 from sqlalchemy import select
 

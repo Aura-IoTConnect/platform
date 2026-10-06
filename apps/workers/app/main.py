@@ -1,7 +1,4 @@
-from dotenv import load_dotenv
-
-load_dotenv()
-
+import app.env  # noqa: F401 — side-effect import: loads .env before the app modules below read os.environ
 import asyncio
 import logging
 import os
