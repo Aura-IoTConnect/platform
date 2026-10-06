@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { isRecordNotFound } from "../errors.js";
 
 // A physical/logical location hierarchy for grouping devices (e.g. "Region >
 // Facility > Room") — distinct from Device.location (free-text label) and
@@ -85,7 +86,8 @@ sitesRouter.patch("/:id", async (req, res) => {
   try {
     const site = await prisma.site.update({ where: { id: req.params.id }, data: parsed.data });
     res.json(site);
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Site not found" });
   }
 });

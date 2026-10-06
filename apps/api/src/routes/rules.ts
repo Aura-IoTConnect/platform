@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { isRecordNotFound } from "../errors.js";
+import { omitProvisionSecretHash } from "../sanitize.js";
 import { callWorkers } from "../workersClient.js";
 
 const createRuleSchema = z.object({
@@ -36,7 +38,7 @@ rulesRouter.get("/", async (req, res) => {
     include: { deviceType: true },
     orderBy: { createdAt: "desc" },
   });
-  res.json(rules);
+  res.json(rules.map((rule) => ({ ...rule, deviceType: omitProvisionSecretHash(rule.deviceType) })));
 });
 
 rulesRouter.post("/", async (req, res) => {
@@ -69,7 +71,8 @@ rulesRouter.patch("/:id", async (req, res) => {
       data: { enabled: parsed.data.enabled },
     });
     res.json(rule);
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Rule not found" });
   }
 });

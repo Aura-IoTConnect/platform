@@ -2,20 +2,15 @@ import { Router } from "express";
 import { z } from "zod";
 import { generateApiKey, hashApiKey } from "../apiKeys.js";
 import { prisma } from "../db.js";
+import { isRecordNotFound } from "../errors.js";
+import { omitProvisionSecretHash } from "../sanitize.js";
 import { callWorkers } from "../workersClient.js";
 
 export const deviceTypesRouter = Router();
 
-// provisionSecretHash is a secret's fingerprint — never send it back, even
-// to admins. provisionKey itself isn't secret (it's a public lookup
-// identifier, like a client ID meant to be embedded in firmware), so it's
-// fine to include in normal responses.
-function omitProvisionSecretHash<T extends { provisionSecretHash: string | null }>(
-  deviceType: T,
-): Omit<T, "provisionSecretHash"> {
-  const { provisionSecretHash: _provisionSecretHash, ...rest } = deviceType;
-  return rest;
-}
+// provisionKey itself isn't secret (it's a public lookup identifier, like a
+// client ID meant to be embedded in firmware), so it's fine in normal
+// responses; provisionSecretHash is stripped via ../sanitize.js.
 
 deviceTypesRouter.get("/", async (req, res) => {
   const verticalId = typeof req.query.verticalId === "string" ? req.query.verticalId : undefined;
@@ -52,7 +47,8 @@ deviceTypesRouter.post("/:id/provisioning-secret", async (req, res) => {
       data: { provisionKey, provisionSecretHash: hashApiKey(provisionSecret) },
     });
     res.json({ provisionKey, provisionSecret });
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Device type not found" });
   }
 });

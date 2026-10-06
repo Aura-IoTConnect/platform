@@ -661,6 +661,46 @@ growing a "public route" inside `apps/web`.
   `npx serve` — not a project dependency, since a static page needs
   nothing beyond a file server.
 
+### API hardening conventions (`apps/api`)
+
+Rules that came out of an audit — each one exists because the opposite was
+found live in the code, so follow them when adding routes:
+
+- **Never return a raw Prisma `include` of a Device/DeviceType.** Prisma hands
+  back every scalar column, including the credential fingerprints
+  `Device.apiKeyHash` and `DeviceType.provisionSecretHash`. Pass any response
+  that nests either through the helpers in `src/sanitize.ts`
+  (`omitDeviceSecrets` for a Device + its deviceType, `omitProvisionSecretHash`
+  for a DeviceType, including each entry of a nested `deviceTypes[]`). This
+  leaked through `alerts`, `rules`, `watchlist` and `verticals` after being
+  "fixed" once in `devices.ts` — so the helpers are shared, and
+  `test/secretLeaks.test.ts` walks every such response recursively for either
+  key. A new route that nests a device or device type needs a case there.
+- **Errors go to the global handler, not a bare `catch`.** `express-async-errors`
+  (imported first in `app.ts`) forwards async rejections to `errorHandler`
+  (`src/errors.ts`), which logs the real error and returns a generic
+  `500 {error: "Internal server error"}` (or `400` for a malformed JSON body).
+  A `catch` around a Prisma `update`/`delete` must only turn *record-not-found*
+  into a 404: `if (!isRecordNotFound(err)) throw err;`. A blanket
+  `catch { 404 }` reports a DB outage as "not found" and hides the cause.
+- **Paginate unbounded lists.** `GET /api/devices` and `GET /api/alerts` take
+  `?limit=&offset=` (default 500, max 1000, via `src/pagination.ts`) and report
+  the unpaginated total in `X-Total-Count` (exposed through CORS). The
+  response stays a plain array — the dashboard depends on that — so it
+  currently shows the first 500; widen that deliberately, don't remove the cap.
+- **Login is throttled** (`src/loginLimiter.ts`): `LOGIN_MAX_FAILURES` failed
+  attempts (default 10) per client IP within `LOGIN_WINDOW_MS` (default 15 min)
+  returns `429` + `Retry-After`. Only *failures* count and a success clears
+  the counter. It is in-memory and per-process; behind a reverse proxy, set
+  `app.set("trust proxy", …)` or every client shares the proxy's IP.
+- **`apps/workers` compares secrets in constant time** (`hmac.compare_digest`
+  via `security.py::_secrets_equal`) — keep using it for any new token/key
+  check rather than `==`.
+- **Testing a Prisma failure:** spy on a *different* delegate from the one you
+  query afterwards. `vi.spyOn(prisma.<model>, …)` doesn't fall back to the real
+  query faithfully once its one-shot rejection is spent (Prisma's delegates are
+  proxies), so reuse after the spy tests the mock, not the server.
+
 ## Commands
 
 ```bash

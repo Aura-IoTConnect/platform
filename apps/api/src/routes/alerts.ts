@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
+import { isRecordNotFound } from "../errors.js";
+import { paginationFrom } from "../pagination.js";
+import { omitDeviceSecrets } from "../sanitize.js";
 
 const updateAlertSchema = z.object({
   status: z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED"]),
@@ -12,15 +15,25 @@ alertsRouter.get("/", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const deviceId = typeof req.query.deviceId === "string" ? req.query.deviceId : undefined;
 
-  const alerts = await prisma.alert.findMany({
-    where: {
-      status: status as "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | undefined,
-      deviceId,
-    },
-    include: { device: { include: { deviceType: { include: { vertical: true } } } }, rule: true },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(alerts);
+  const where = {
+    status: status as "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | undefined,
+    deviceId,
+  };
+  // Paginated via ?limit=&offset= (default 500, max 1000, newest first); the
+  // unpaginated total is in the X-Total-Count header.
+  const [alerts, total] = await Promise.all([
+    prisma.alert.findMany({
+      where,
+      include: { device: { include: { deviceType: { include: { vertical: true } } } }, rule: true },
+      orderBy: { createdAt: "desc" },
+      ...paginationFrom(req, { defaultLimit: 500, maxLimit: 1000 }),
+    }),
+    prisma.alert.count({ where }),
+  ]);
+  res.setHeader("X-Total-Count", String(total));
+  // The nested device carries apiKeyHash and its deviceType carries
+  // provisionSecretHash — neither may reach the client.
+  res.json(alerts.map((alert) => ({ ...alert, device: omitDeviceSecrets(alert.device) })));
 });
 
 alertsRouter.patch("/:id", async (req, res) => {
@@ -39,7 +52,8 @@ alertsRouter.patch("/:id", async (req, res) => {
       },
     });
     res.json(alert);
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Alert not found" });
   }
 });
