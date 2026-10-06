@@ -4,6 +4,9 @@ import type { Prisma } from "@prisma/client";
 import { generateApiKey, hashApiKey } from "../apiKeys.js";
 import { encodeCsv, parseCsv } from "../csv.js";
 import { prisma } from "../db.js";
+import { isRecordNotFound } from "../errors.js";
+import { paginationFrom } from "../pagination.js";
+import { omitApiKeyHash, omitNestedProvisionSecretHash } from "../sanitize.js";
 import { callWorkers } from "../workersClient.js";
 
 const createDeviceSchema = z.object({
@@ -45,24 +48,6 @@ const actuatorCommandSchema = z.object({
 });
 
 export const devicesRouter = Router();
-
-// apiKeyHash is a secret's fingerprint — never send it back, even to admins.
-function omitApiKeyHash<T extends { apiKeyHash: string | null }>(device: T): Omit<T, "apiKeyHash"> {
-  const { apiKeyHash: _apiKeyHash, ...rest } = device;
-  return rest;
-}
-
-// Same idea, for the nested deviceType's provisioning secret hash — every
-// route here that includes { deviceType: ... } must strip this too, or it
-// leaks the device type's provisioning credential fingerprint through a
-// device response even though deviceTypes.ts already hides it from its own
-// routes. Only call this where `deviceType` was actually included.
-function omitNestedProvisionSecretHash<T extends { deviceType: { provisionSecretHash: string | null } }>(
-  device: T,
-): T & { deviceType: Omit<T["deviceType"], "provisionSecretHash"> } {
-  const { provisionSecretHash: _provisionSecretHash, ...deviceTypeRest } = device.deviceType;
-  return { ...device, deviceType: deviceTypeRest } as T & { deviceType: Omit<T["deviceType"], "provisionSecretHash"> };
-}
 
 // Gateway/child hierarchy is deliberately one level only — a gateway's own
 // `parentDeviceId` must be null, and a device that already has children
@@ -115,13 +100,21 @@ const deviceIncludes = {
   site: true,
 } as const;
 
+// Paginated via ?limit=&offset= (default 500, max 1000, newest first); the
+// unpaginated total is in the X-Total-Count header.
 devicesRouter.get("/", async (req, res) => {
   const tag = typeof req.query.tag === "string" ? req.query.tag : undefined;
-  const devices = await prisma.device.findMany({
-    where: tag ? { tags: { has: tag } } : undefined,
-    include: deviceIncludes,
-    orderBy: { createdAt: "desc" },
-  });
+  const where = tag ? { tags: { has: tag } } : undefined;
+  const [devices, total] = await Promise.all([
+    prisma.device.findMany({
+      where,
+      include: deviceIncludes,
+      orderBy: { createdAt: "desc" },
+      ...paginationFrom(req, { defaultLimit: 500, maxLimit: 1000 }),
+    }),
+    prisma.device.count({ where }),
+  ]);
+  res.setHeader("X-Total-Count", String(total));
   res.json(devices.map(omitApiKeyHash).map(omitNestedProvisionSecretHash));
 });
 
@@ -255,7 +248,8 @@ devicesRouter.post("/import", async (req, res) => {
       await provisionMqttCredentials(device.id, apiKey);
       created += 1;
       results.push({ row: rowNumber, ok: true, deviceId: device.id });
-    } catch {
+    } catch (err) {
+      console.error(`device import: row ${rowNumber} failed:`, err);
       failed += 1;
       results.push({ row: rowNumber, ok: false, error: "Failed to create device" });
     }
@@ -311,7 +305,8 @@ devicesRouter.post("/:id/rotate-key", async (req, res) => {
     });
     const mqttProvisioned = await provisionMqttCredentials(device.id, apiKey);
     res.json({ ...omitApiKeyHash(device), apiKey, mqttProvisioned });
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Device not found" });
   }
 });
@@ -349,7 +344,8 @@ devicesRouter.patch("/:id", async (req, res) => {
       include: deviceIncludes,
     });
     res.json(omitNestedProvisionSecretHash(omitApiKeyHash(device)));
-  } catch {
+  } catch (err) {
+    if (!isRecordNotFound(err)) throw err;
     res.status(404).json({ error: "Device not found" });
   }
 });

@@ -61,6 +61,12 @@ async def lifespan(_app: FastAPI):
     silence_task = asyncio.create_task(_silence_check_loop())
     yield
     silence_task.cancel()
+    # Await the cancelled task so it has actually unwound (and released its
+    # DB connection) before the bridge and engine are torn down.
+    try:
+        await silence_task
+    except asyncio.CancelledError:
+        pass
     mqtt_bridge.stop()
 
 

@@ -19,6 +19,7 @@ those endpoints are open; see CLAUDE.md.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 from typing import Optional
 
@@ -34,12 +35,21 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
     return None
 
 
+def _secrets_equal(supplied: Optional[str], expected: str) -> bool:
+    """Constant-time comparison, so response timing can't be used to guess a
+    token or key hash one character at a time. A missing credential is simply
+    not equal."""
+    if supplied is None:
+        return False
+    return hmac.compare_digest(supplied.encode(), expected.encode())
+
+
 async def require_workers_token(authorization: Optional[str] = Header(default=None)) -> None:
     expected = os.environ.get("WORKERS_API_TOKEN")
     if not expected:
         return
 
-    if _extract_bearer(authorization) != expected:
+    if not _secrets_equal(_extract_bearer(authorization), expected):
         raise HTTPException(status_code=401, detail="Missing or invalid bearer token")
 
 
@@ -58,10 +68,10 @@ async def check_device_auth(device_id: str, authorization: Optional[str] = Heade
     token = _extract_bearer(authorization)
 
     if row.api_key_hash:
-        if token is None or hashlib.sha256(token.encode()).hexdigest() != row.api_key_hash:
+        if token is None or not _secrets_equal(hashlib.sha256(token.encode()).hexdigest(), row.api_key_hash):
             raise HTTPException(status_code=401, detail="Missing or invalid device API key")
         return
 
     expected = os.environ.get("WORKERS_API_TOKEN")
-    if expected and token != expected:
+    if expected and not _secrets_equal(token, expected):
         raise HTTPException(status_code=401, detail="Missing or invalid bearer token")

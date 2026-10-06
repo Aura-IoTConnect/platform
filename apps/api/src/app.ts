@@ -1,6 +1,8 @@
+import "express-async-errors";
 import cors from "cors";
 import express from "express";
 import { requireAuth } from "./auth.js";
+import { errorHandler } from "./errors.js";
 import { metricsHandler, metricsMiddleware } from "./metrics.js";
 import { actuatorCommandsRouter } from "./routes/actuatorCommands.js";
 import { agentsRouter } from "./routes/agents.js";
@@ -16,7 +18,8 @@ import { watchlistRouter } from "./routes/watchlist.js";
 
 export const app = express();
 
-app.use(cors());
+// X-Total-Count (paginated list endpoints) must be exposed for browser JS to read it.
+app.use(cors({ exposedHeaders: ["X-Total-Count"] }));
 app.use(express.json());
 app.use(metricsMiddleware);
 
@@ -46,3 +49,7 @@ app.use("/api/alerts", alertsRouter);
 app.use("/api/agents", agentsRouter);
 app.use("/api/watchlist", watchlistRouter);
 app.use("/api/sites", sitesRouter);
+
+// Must be registered after every route: converts any thrown/rejected error
+// into a logged, generic 500 (or 400 for a malformed JSON body).
+app.use(errorHandler);

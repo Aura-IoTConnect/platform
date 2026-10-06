@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
+import { omitDeviceSecrets } from "../sanitize.js";
 
 // A user's personal, cross-device watchlist of (device, metric) pins — see
 // CLAUDE.md's "Watchlist" section. Every route is scoped to req.user.id;
@@ -22,7 +23,9 @@ watchlistRouter.get("/", async (req, res) => {
     include,
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
-  res.json(items);
+  // The nested device carries apiKeyHash and its deviceType carries
+  // provisionSecretHash — neither may reach the client.
+  res.json(items.map((item) => ({ ...item, device: omitDeviceSecrets(item.device) })));
 });
 
 watchlistRouter.post("/", async (req, res) => {
@@ -56,7 +59,7 @@ watchlistRouter.post("/", async (req, res) => {
       },
       include,
     });
-    res.status(201).json(item);
+    res.status(201).json({ ...item, device: omitDeviceSecrets(item.device) });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       res.status(409).json({ error: "Already on your watchlist" });
