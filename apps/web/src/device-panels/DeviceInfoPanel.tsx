@@ -86,25 +86,27 @@ export function DeviceInfoPanel({ device: initialDevice }: { device: Device }) {
         ) : (
           <p className="hint">No lifecycle info recorded yet.</p>
         )}
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </div>
     )
   }
 
   return (
     <form onSubmit={save} className="device-form device-info-form">
-      <input type="text" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="Manufacturer" />
+      <input type="text" value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="Manufacturer" aria-label="Manufacturer" />
       <input
         type="text"
         value={hardwareModel}
         onChange={(e) => setHardwareModel(e.target.value)}
         placeholder="Hardware model"
+        aria-label="Hardware model"
       />
       <input
         type="text"
         value={firmwareVersion}
         onChange={(e) => setFirmwareVersion(e.target.value)}
         placeholder="Firmware version"
+        aria-label="Firmware version"
       />
       <label className="device-info-date-label">
         Commissioned
@@ -120,7 +122,7 @@ export function DeviceInfoPanel({ device: initialDevice }: { device: Device }) {
       <button type="button" onClick={() => setEditing(false)} disabled={saving}>
         Cancel
       </button>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </form>
   )
 }

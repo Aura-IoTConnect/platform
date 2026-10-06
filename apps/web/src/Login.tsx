@@ -30,6 +30,7 @@ export function Login() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email"
+          aria-label="Email"
           autoComplete="username"
           required
         />
@@ -38,6 +39,7 @@ export function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Password"
+          aria-label="Password"
           autoComplete="current-password"
           required
         />
@@ -45,7 +47,7 @@ export function Login() {
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </main>
   )
 }

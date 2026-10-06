@@ -135,7 +135,7 @@ export function AlertsTab() {
         </div>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {alerts.some((a) => a.status === 'OPEN') && (
         <div className="agent-toolbar">

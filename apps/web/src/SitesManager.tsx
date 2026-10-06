@@ -73,8 +73,8 @@ export function SitesManager() {
       {open && (
         <div className="sites-manager-body">
           <form onSubmit={addSite} className="device-form">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Site name" />
-            <select value={parentSiteId} onChange={(e) => setParentSiteId(e.target.value)}>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Site name" aria-label="Site name" />
+            <select value={parentSiteId} onChange={(e) => setParentSiteId(e.target.value)} aria-label="Parent site">
               <option value="">No parent (top level)</option>
               {orderedWithDepth(sites).map(({ site, depth }) => (
                 <option key={site.id} value={site.id}>
@@ -85,7 +85,7 @@ export function SitesManager() {
             </select>
             <button type="submit">Add site</button>
           </form>
-          {error && <p className="error">{error}</p>}
+          {error && <p className="error" role="alert">{error}</p>}
           {sites.length === 0 ? (
             <p className="hint">No sites yet.</p>
           ) : (

@@ -65,14 +65,14 @@ export function WatchlistTab() {
   return (
     <section>
       <form onSubmit={add} className="device-form">
-        <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} aria-label="Device">
           {devices.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name} · {d.deviceType.name}
             </option>
           ))}
         </select>
-        <select value={effectiveMetricKey} onChange={(e) => setMetricKey(e.target.value)}>
+        <select value={effectiveMetricKey} onChange={(e) => setMetricKey(e.target.value)} aria-label="Metric">
           {metricOptions.map((m) => (
             <option key={m.key} value={m.key}>
               {m.label}
@@ -84,7 +84,7 @@ export function WatchlistTab() {
         </button>
       </form>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {loading ? (
         <p>Loading…</p>

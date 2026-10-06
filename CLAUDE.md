@@ -723,6 +723,16 @@ Test conventions worth knowing before adding one:
   keep a clean import block instead of a `load_dotenv()` call wedged between
   imports. Don't enable ruff's `UP045` — `X | None` breaks pydantic on the
   Python 3.9 dev venv.
+- **web accessibility conventions** (regression-tested in
+  `src/accessibility.test.tsx`): every input/select gets an `aria-label` — a
+  placeholder is not an accessible name; anything clickable must be a real
+  `<button>`, never an `onClick` on a `<li>`/`<div>` (device rows keep the
+  row-wide `onClick` for mouse users but their *title* is a
+  `.record-title-button` so keyboard and screen-reader users can reach it);
+  error paragraphs carry `role="alert"`; SVG charts take a `label` and expose
+  `role="img"` with a text summary; emoji-only buttons need an `aria-label`.
+  The top nav is `aria-current`, not a `tablist` — it doesn't implement the
+  arrow-key tab pattern, so it shouldn't claim to.
 - **web:** `apps/web` uses Vitest + Testing Library on jsdom with *explicit*
   imports (no globals), so `src/test/setup.ts` registers RTL's cleanup by hand.
   Mock `./api` with `vi.mock` and use `src/test/fixtures.ts`'s `makeDevice()`.

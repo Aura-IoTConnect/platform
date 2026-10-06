@@ -90,7 +90,7 @@ export function GatewayPanel({
 
       {!isChild && !isGateway && (
         <div className="device-form">
-          <select value={attachTargetId} onChange={(e) => setAttachTargetId(e.target.value)}>
+          <select value={attachTargetId} onChange={(e) => setAttachTargetId(e.target.value)} aria-label="Attach to gateway">
             <option value="">Attach to gateway…</option>
             {parentCandidates.map((d) => (
               <option key={d.id} value={d.id}>
@@ -126,7 +126,7 @@ export function GatewayPanel({
 
       {!isChild && (
         <div className="device-form">
-          <select value={childTargetId} onChange={(e) => setChildTargetId(e.target.value)}>
+          <select value={childTargetId} onChange={(e) => setChildTargetId(e.target.value)} aria-label="Add child device">
             <option value="">Add child device…</option>
             {childCandidates.map((d) => (
               <option key={d.id} value={d.id}>
@@ -144,7 +144,7 @@ export function GatewayPanel({
         <p className="hint">No other devices available to link yet.</p>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </div>
   )
 }

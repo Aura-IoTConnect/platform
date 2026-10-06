@@ -18,7 +18,7 @@ export function LineChartWidget({ label, unit, points }: { label: string; unit?:
           </span>
         )}
       </div>
-      <LineChart points={points} />
+      <LineChart points={points} label={label} />
     </div>
   )
 }
