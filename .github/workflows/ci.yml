@@ -59,14 +59,22 @@ jobs:
         # doesn't exist in CI. Env vars are already injected via job `env:`.
         run: npx tsx prisma/seed.ts
 
-      - name: Build
-        run: npm run build
+      # Typecheck and lint run before Build so a type error is reported as
+      # one, rather than as a failed build.
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
+      - name: Build
+        run: npm run build
+
       - name: Node tests (apps/api)
         run: npm test --workspace=apps/api
+
+      - name: Web tests (apps/web)
+        run: npm test --workspace=apps/web
 
       - uses: actions/setup-python@v5
         with:
@@ -77,6 +85,10 @@ jobs:
       - name: Install Python dependencies
         working-directory: apps/workers
         run: pip install -r requirements-dev.txt
+
+      - name: Python lint (apps/workers)
+        working-directory: apps/workers
+        run: ruff check app tests scripts
 
       - name: Python tests (apps/workers)
         working-directory: apps/workers

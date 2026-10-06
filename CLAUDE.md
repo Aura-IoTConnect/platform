@@ -676,6 +676,8 @@ npm run dev:web                   # apps/web on :5173
 npm run dev:marketing             # apps/marketing on :5175 (static, via npx serve)
 npm run build                     # builds api then web
 npm run lint                      # lints api then web
+npm run typecheck                 # tsc --noEmit on api, tsc -b on web (CI runs it before build)
+npm test                          # api (vitest, real Postgres) then web (vitest + jsdom, no DB)
 
 cd apps/workers
 python3 -m venv .venv && source .venv/bin/activate
@@ -701,7 +703,29 @@ Python tests (from `apps/workers`, venv active):
 pip install -r requirements-dev.txt
 pytest -v   # unit tests for rule operators + integration tests against real
             # Postgres, each wrapped in a rolled-back transaction (tests/)
+ruff check app tests scripts   # correctness-only lint (ruff.toml); CI runs it too
 ```
+
+Test conventions worth knowing before adding one:
+
+- **workers: entry points that open their own transaction can't use the
+  rollback fixture.** `ingest_reading`, `record_heartbeat`, `check_device_auth`
+  and the route handlers each call `engine.begin()`/`connect()` themselves, so
+  rows seeded inside a rolled-back test connection are invisible to them. Those
+  tests (`test_telemetry_service.py`, `test_security.py`, `test_routes.py`)
+  seed *committed* rows and delete them in the fixture's `finally`. They also
+  await the handlers directly instead of using `TestClient` — `TestClient` runs
+  the app on its own event loop while the cached asyncpg pool belongs to
+  pytest-asyncio's, and mixing them errors. Add an autouse
+  `dispose_engine()` fixture so one test's pool never outlives its loop.
+- **workers: `.env` is loaded by `app/env.py`,** imported first (with a
+  `# noqa: F401`) by `main.py` and `scripts/simulate_fleet.py`, so those files
+  keep a clean import block instead of a `load_dotenv()` call wedged between
+  imports. Don't enable ruff's `UP045` — `X | None` breaks pydantic on the
+  Python 3.9 dev venv.
+- **web:** `apps/web` uses Vitest + Testing Library on jsdom with *explicit*
+  imports (no globals), so `src/test/setup.ts` registers RTL's cleanup by hand.
+  Mock `./api` with `vi.mock` and use `src/test/fixtures.ts`'s `makeDevice()`.
 
 `apps/api`'s `dev`/`start` scripts load `.env` via Node's `--env-file` flag
 (Node 20.6+) — no `dotenv` dependency needed there. `apps/workers` loads

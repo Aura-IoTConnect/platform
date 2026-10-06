@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file=.env dist/index.js",
     "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

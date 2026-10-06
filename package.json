@@ -10,7 +10,9 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "dev:marketing": "npx --yes serve apps/marketing -l 5175",
     "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/web",
-    "lint": "npm run lint --workspace=apps/api && npm run lint --workspace=apps/web"
+    "lint": "npm run lint --workspace=apps/api && npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspace=apps/api && npm run typecheck --workspace=apps/web",
+    "test": "npm test --workspace=apps/api && npm test --workspace=apps/web"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,
