@@ -43,12 +43,12 @@ export function ServiceLogPanel({ deviceId }: { deviceId: string }) {
     <div className="service-log-panel">
       <span className="widget-label">Service log</span>
       <form onSubmit={addNote} className="device-form">
-        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Replaced desiccant pack" />
+        <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Replaced desiccant pack" aria-label="Service note" />
         <button type="submit" disabled={adding}>
           {adding ? 'Adding…' : 'Add note'}
         </button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
       {loading ? (
         <p className="hint">Loading…</p>
       ) : entries.length === 0 ? (

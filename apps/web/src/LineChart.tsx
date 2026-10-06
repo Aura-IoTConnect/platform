@@ -3,7 +3,17 @@ interface Point {
   timestamp: string
 }
 
-export function LineChart({ points, width = 280, height = 56 }: { points: Point[]; width?: number; height?: number }) {
+export function LineChart({
+  points,
+  width = 280,
+  height = 56,
+  label,
+}: {
+  points: Point[]
+  width?: number
+  height?: number
+  label?: string
+}) {
   if (points.length === 0) {
     return <p className="hint">No data yet.</p>
   }
@@ -21,7 +31,15 @@ export function LineChart({ points, width = 280, height = 56 }: { points: Point[
   })
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} className="line-chart" preserveAspectRatio="none">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width="100%"
+      height={height}
+      className="line-chart"
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`${label ?? 'Line chart'}: ${points.length} reading${points.length === 1 ? '' : 's'}, latest ${points[points.length - 1].value}, range ${min} to ${max}`}
+    >
       <polyline points={coords.join(' ')} fill="none" stroke="var(--accent)" strokeWidth="2" />
     </svg>
   )

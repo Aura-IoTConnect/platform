@@ -22,7 +22,13 @@ export function GaugeWidget({
 
   return (
     <div className="widget gauge-widget">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE}>
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        width={SIZE}
+        height={SIZE}
+        role="img"
+        aria-label={`${label}: ${value}${unit ? ` ${unit}` : ''}`}
+      >
         <circle cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} fill="none" stroke="var(--border)" strokeWidth={STROKE_WIDTH} />
         <circle
           cx={SIZE / 2}

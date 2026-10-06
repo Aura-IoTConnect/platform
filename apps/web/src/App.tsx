@@ -36,12 +36,13 @@ function App() {
         </div>
       </div>
 
-      <nav className="tabs">
+      <nav className="tabs" aria-label="Dashboard sections">
         {TABS.map((t) => (
           <button
             key={t}
             type="button"
             className={t === tab ? 'tab active' : 'tab'}
+            aria-current={t === tab ? 'page' : undefined}
             onClick={() => setTab(t)}
           >
             {t}

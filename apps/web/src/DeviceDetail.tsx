@@ -263,12 +263,14 @@ export function DeviceDetail({
             value={commandName}
             onChange={(e) => setCommandName(e.target.value)}
             placeholder="Command (e.g. turn_on_fan)"
+            aria-label="Actuator command"
           />
           <input
             type="text"
             value={commandValue}
             onChange={(e) => setCommandValue(e.target.value)}
             placeholder="Value (optional)"
+            aria-label="Command value"
           />
           <button type="submit" disabled={sending || sendingAll}>
             {sending ? 'Sending…' : 'Send command'}
@@ -278,7 +280,7 @@ export function DeviceDetail({
           </button>
         </form>
 
-        {actuatorError && <p className="error">{actuatorError}</p>}
+        {actuatorError && <p className="error" role="alert">{actuatorError}</p>}
 
         {bulkResult && (
           <div className="bulk-result">
@@ -338,7 +340,7 @@ export function DeviceDetail({
                   {meta?.unit ? ` ${meta.unit}` : ''}
                 </span>
               </div>
-              <LineChart points={points} />
+              <LineChart points={points} label={meta?.label ?? metric} />
             </div>
           )
         })

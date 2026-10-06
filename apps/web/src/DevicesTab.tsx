@@ -174,8 +174,9 @@ export function DevicesTab() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Device name"
+          aria-label="Device name"
         />
-        <select value={deviceTypeId} onChange={(e) => setDeviceTypeId(e.target.value)}>
+        <select value={deviceTypeId} onChange={(e) => setDeviceTypeId(e.target.value)} aria-label="Device type">
           {verticals.map((vertical) => (
             <optgroup key={vertical.id} label={vertical.name}>
               {vertical.deviceTypes.map((dt) => (
@@ -191,6 +192,7 @@ export function DevicesTab() {
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           placeholder="Location (optional)"
+          aria-label="Location"
         />
         <button type="submit">Add device</button>
       </form>
@@ -202,7 +204,7 @@ export function DevicesTab() {
         <button type="button" onClick={() => fileInputRef.current?.click()} disabled={importing}>
           {importing ? 'Importing…' : 'Import CSV'}
         </button>
-        <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} hidden />
+        <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleImportFile} hidden aria-label="Device CSV file" />
         <SitesManager />
       </div>
 
@@ -248,7 +250,7 @@ export function DevicesTab() {
         </p>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {newApiKey && (
         <div className="api-key-banner">
@@ -295,14 +297,19 @@ export function DevicesTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name, location, type, tag, site…"
+          aria-label="Search devices"
         />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          aria-label="Filter by status"
+        >
           <option value="ALL">All statuses</option>
           <option value="ONLINE">Online</option>
           <option value="OFFLINE">Offline</option>
           <option value="MAINTENANCE">Maintenance</option>
         </select>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} aria-label="Sort devices">
           <option value="created">Newest first</option>
           <option value="name">Name</option>
           <option value="status">Status</option>
@@ -321,7 +328,13 @@ export function DevicesTab() {
           {visibleDevices.map((device) => (
             <li key={device.id} className="clickable" onClick={() => setSelectedId(device.id)}>
               <div className="record-main">
-                <span className="record-title">{device.name}</span>
+                <button
+                  type="button"
+                  className="record-title record-title-button"
+                  aria-current={device.id === selectedId ? 'true' : undefined}
+                >
+                  {device.name}
+                </button>
                 <span className="record-subtitle">
                   {device.deviceType.vertical.name} · {device.deviceType.name}
                   {device.location ? ` · ${device.location}` : ''}

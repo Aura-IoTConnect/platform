@@ -33,7 +33,7 @@ export function AgentRunsTab() {
         agent endpoints). This tab reviews results and scores them, closing the feedback loop.
       </p>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {loading ? (
         <p>Loading…</p>
@@ -58,6 +58,7 @@ export function AgentRunsTab() {
                   type="button"
                   disabled={run.feedback?.score === 1}
                   onClick={() => sendFeedback(run.id, 1)}
+                  aria-label="Mark this run helpful"
                 >
                   👍
                 </button>
@@ -65,6 +66,7 @@ export function AgentRunsTab() {
                   type="button"
                   disabled={run.feedback?.score === -1}
                   onClick={() => sendFeedback(run.id, -1)}
+                  aria-label="Mark this run not helpful"
                 >
                   👎
                 </button>

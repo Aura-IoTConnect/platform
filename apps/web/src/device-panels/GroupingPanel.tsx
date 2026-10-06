@@ -86,7 +86,7 @@ export function GroupingPanel({ device: initialDevice }: { device: Device }) {
           </div>
         )}
         <p className="hint">{device.site ? `Site: ${device.site.name}` : 'No site assigned.'}</p>
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
       </div>
     )
   }
@@ -98,8 +98,9 @@ export function GroupingPanel({ device: initialDevice }: { device: Device }) {
         value={tagsText}
         onChange={(e) => setTagsText(e.target.value)}
         placeholder="Tags, comma separated (e.g. freezer, critical)"
+        aria-label="Tags"
       />
-      <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+      <select value={siteId} onChange={(e) => setSiteId(e.target.value)} aria-label="Site">
         <option value="">No site</option>
         {orderedWithDepth(sites).map(({ site, depth }) => (
           <option key={site.id} value={site.id}>
@@ -114,7 +115,7 @@ export function GroupingPanel({ device: initialDevice }: { device: Device }) {
       <button type="button" onClick={() => setEditing(false)} disabled={saving}>
         Cancel
       </button>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </form>
   )
 }
